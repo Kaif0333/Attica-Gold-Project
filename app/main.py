@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.database import engine, get_db
+from app.login_guard import is_allowed, register_failure, register_success
 from app.migrations import run_migrations
 from app.models import Appointment, User
 from app.observability import configure_logging, request_logging_middleware
@@ -69,6 +70,12 @@ def set_flash(request: Request, message: str, category: str = "info") -> None:
 
 def pop_flash(request: Request):
     return request.session.pop("flash", None)
+
+
+def client_ip(request: Request) -> str:
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
 
 
 if settings.auto_run_migrations:
@@ -135,15 +142,34 @@ def login(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(User.email == email).first()
-    if not user or not verify_password(password, user.password):
+    ip = client_ip(request)
+    allowed, retry_after = is_allowed(email=email, client_ip=ip)
+    if not allowed:
         return templates.TemplateResponse(
             request,
             "login.html",
-            {"error": "Invalid credentials"},
-            status_code=401,
+            {
+                "error": f"Too many failed attempts. Try again in {retry_after} seconds.",
+            },
+            status_code=429,
         )
 
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not verify_password(password, user.password):
+        still_open, lockout_for = register_failure(email=email, client_ip=ip)
+        message = "Invalid credentials"
+        status = 401
+        if not still_open:
+            message = f"Too many failed attempts. Try again in {lockout_for} seconds."
+            status = 429
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"error": message},
+            status_code=status,
+        )
+
+    register_success(email=email, client_ip=ip)
     request.session["user_id"] = user.id
     request.session["user"] = user.email
     request.session["role"] = user.role or "client"

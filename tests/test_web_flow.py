@@ -4,13 +4,16 @@ import uuid
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
+from app.login_guard import clear_attempts_for_tests
 from app.main import app
 from app.models import User
 from app.security import hash_password
+from app.settings import get_settings
 
 
 class WebFlowTests(unittest.TestCase):
     def setUp(self) -> None:
+        clear_attempts_for_tests()
         self.client = TestClient(app)
 
     def tearDown(self) -> None:
@@ -130,6 +133,31 @@ class WebFlowTests(unittest.TestCase):
         )
         self.assertEqual(register.status_code, 201)
         self.assertEqual(login.status_code, 200)
+
+    def test_api_login_rate_limit_and_lockout(self) -> None:
+        settings = get_settings()
+        email = f"limit_{uuid.uuid4().hex[:8]}@example.com"
+
+        self.client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": "pass1234"},
+        )
+
+        last_status = None
+        for _ in range(settings.login_max_attempts):
+            res = self.client.post(
+                "/api/v1/auth/login",
+                json={"email": email, "password": "wrong-pass"},
+            )
+            last_status = res.status_code
+
+        self.assertIn(last_status, [401, 429])
+
+        blocked = self.client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": "wrong-pass"},
+        )
+        self.assertEqual(blocked.status_code, 429)
 
 
 if __name__ == "__main__":

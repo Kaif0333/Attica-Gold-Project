@@ -9,6 +9,15 @@ def _as_bool(value: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _as_int(value: str, default: int) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str
@@ -22,6 +31,9 @@ class Settings:
     auto_run_migrations: bool
     log_level: str
     request_id_header: str
+    login_max_attempts: int
+    login_window_seconds: int
+    login_lockout_seconds: int
     admin_email: str
     admin_password: str
 
@@ -49,6 +61,9 @@ def get_settings() -> Settings:
         auto_run_migrations=auto_run_migrations,
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         request_id_header=os.getenv("REQUEST_ID_HEADER", "X-Request-ID"),
+        login_max_attempts=_as_int(os.getenv("LOGIN_MAX_ATTEMPTS"), default=5),
+        login_window_seconds=_as_int(os.getenv("LOGIN_WINDOW_SECONDS"), default=900),
+        login_lockout_seconds=_as_int(os.getenv("LOGIN_LOCKOUT_SECONDS"), default=900),
         admin_email=os.getenv("ATTICA_ADMIN_EMAIL", ""),
         admin_password=os.getenv("ATTICA_ADMIN_PASSWORD", ""),
     )
