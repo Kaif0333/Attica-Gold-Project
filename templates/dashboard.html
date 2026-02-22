@@ -10,6 +10,7 @@
     <article class="panel">
         <h3>Book Appointment</h3>
         <form method="post" action="/book-appointment" class="form-grid">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label for="date">Date</label>
             <input id="date" type="date" name="date" required>
 

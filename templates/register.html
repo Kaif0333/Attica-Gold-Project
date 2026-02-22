@@ -11,6 +11,7 @@
         {% endif %}
 
         <form method="post" action="/register" class="form-grid">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label for="email">Business Email</label>
             <input id="email" type="email" name="email" placeholder="name@company.com" required>
 

@@ -1,5 +1,6 @@
 import unittest
 import uuid
+import re
 
 from fastapi.testclient import TestClient
 
@@ -19,6 +20,13 @@ class WebFlowTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.client.close()
 
+    def _csrf_token_from_page(self, path: str) -> str:
+        response = self.client.get(path)
+        self.assertEqual(response.status_code, 200)
+        match = re.search(r'name="csrf_token" value="([^"]+)"', response.text)
+        self.assertIsNotNone(match)
+        return match.group(1)
+
     def test_register_login_book_and_user_isolation(self) -> None:
         email1 = f"user1_{uuid.uuid4().hex[:8]}@example.com"
         email2 = f"user2_{uuid.uuid4().hex[:8]}@example.com"
@@ -26,14 +34,22 @@ class WebFlowTests(unittest.TestCase):
         # Register and book an appointment as user 1.
         register_1 = self.client.post(
             "/register",
-            data={"email": email1, "password": "pass1234"},
+            data={
+                "email": email1,
+                "password": "pass1234",
+                "csrf_token": self._csrf_token_from_page("/register"),
+            },
             follow_redirects=False,
         )
         self.assertEqual(register_1.status_code, 303)
 
         book_1 = self.client.post(
             "/book-appointment",
-            data={"date": "2026-03-05", "time": "09:45"},
+            data={
+                "date": "2026-03-05",
+                "time": "09:45",
+                "csrf_token": self._csrf_token_from_page("/dashboard"),
+            },
             follow_redirects=False,
         )
         self.assertEqual(book_1.status_code, 303)
@@ -43,14 +59,22 @@ class WebFlowTests(unittest.TestCase):
         # Register and book as user 2.
         register_2 = self.client.post(
             "/register",
-            data={"email": email2, "password": "pass1234"},
+            data={
+                "email": email2,
+                "password": "pass1234",
+                "csrf_token": self._csrf_token_from_page("/register"),
+            },
             follow_redirects=False,
         )
         self.assertEqual(register_2.status_code, 303)
 
         book_2 = self.client.post(
             "/book-appointment",
-            data={"date": "2026-03-06", "time": "10:15"},
+            data={
+                "date": "2026-03-06",
+                "time": "10:15",
+                "csrf_token": self._csrf_token_from_page("/dashboard"),
+            },
             follow_redirects=False,
         )
         self.assertEqual(book_2.status_code, 303)
@@ -66,13 +90,21 @@ class WebFlowTests(unittest.TestCase):
         email = f"user_{uuid.uuid4().hex[:8]}@example.com"
         self.client.post(
             "/register",
-            data={"email": email, "password": "pass1234"},
+            data={
+                "email": email,
+                "password": "pass1234",
+                "csrf_token": self._csrf_token_from_page("/register"),
+            },
             follow_redirects=False,
         )
 
         bad_book = self.client.post(
             "/book-appointment",
-            data={"date": "invalid-date", "time": "bad-time"},
+            data={
+                "date": "invalid-date",
+                "time": "bad-time",
+                "csrf_token": self._csrf_token_from_page("/dashboard"),
+            },
             follow_redirects=False,
         )
         self.assertEqual(bad_book.status_code, 303)
@@ -99,7 +131,11 @@ class WebFlowTests(unittest.TestCase):
         # Admin login should grant access.
         login = self.client.post(
             "/login",
-            data={"email": email, "password": "pass1234"},
+            data={
+                "email": email,
+                "password": "pass1234",
+                "csrf_token": self._csrf_token_from_page("/login"),
+            },
             follow_redirects=False,
         )
         self.assertEqual(login.status_code, 303)
@@ -158,6 +194,19 @@ class WebFlowTests(unittest.TestCase):
             json={"email": email, "password": "wrong-pass"},
         )
         self.assertEqual(blocked.status_code, 429)
+
+    def test_web_form_rejects_invalid_csrf(self) -> None:
+        email = f"csrf_{uuid.uuid4().hex[:8]}@example.com"
+        response = self.client.post(
+            "/register",
+            data={
+                "email": email,
+                "password": "pass1234",
+                "csrf_token": "invalid-token",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 403)
 
 
 if __name__ == "__main__":

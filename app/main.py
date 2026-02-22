@@ -9,6 +9,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.csrf import get_or_create_csrf_token, validate_csrf_token
 from app.database import engine, get_db
 from app.login_guard import is_allowed, register_failure, register_success
 from app.migrations import run_migrations
@@ -131,7 +132,7 @@ def login_page(request: Request):
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"flash": pop_flash(request)},
+        {"flash": pop_flash(request), "csrf_token": get_or_create_csrf_token(request)},
     )
 
 
@@ -140,8 +141,20 @@ def login(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
+    csrf_token: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    if not validate_csrf_token(request, csrf_token):
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": "Invalid security token. Please refresh and try again.",
+                "csrf_token": get_or_create_csrf_token(request),
+            },
+            status_code=403,
+        )
+
     ip = client_ip(request)
     allowed, retry_after = is_allowed(email=email, client_ip=ip)
     if not allowed:
@@ -150,6 +163,7 @@ def login(
             "login.html",
             {
                 "error": f"Too many failed attempts. Try again in {retry_after} seconds.",
+                "csrf_token": get_or_create_csrf_token(request),
             },
             status_code=429,
         )
@@ -165,7 +179,7 @@ def login(
         return templates.TemplateResponse(
             request,
             "login.html",
-            {"error": message},
+            {"error": message, "csrf_token": get_or_create_csrf_token(request)},
             status_code=status,
         )
 
@@ -184,7 +198,7 @@ def register_page(request: Request):
     return templates.TemplateResponse(
         request,
         "register.html",
-        {"flash": pop_flash(request)},
+        {"flash": pop_flash(request), "csrf_token": get_or_create_csrf_token(request)},
     )
 
 
@@ -193,14 +207,26 @@ def register(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
+    csrf_token: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    if not validate_csrf_token(request, csrf_token):
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {
+                "error": "Invalid security token. Please refresh and try again.",
+                "csrf_token": get_or_create_csrf_token(request),
+            },
+            status_code=403,
+        )
+
     existing_user = db.query(User).filter(User.email == email).first()
     if existing_user:
         return templates.TemplateResponse(
             request,
             "register.html",
-            {"error": "Email already registered"},
+            {"error": "Email already registered", "csrf_token": get_or_create_csrf_token(request)},
             status_code=400,
         )
 
@@ -208,7 +234,10 @@ def register(
         return templates.TemplateResponse(
             request,
             "register.html",
-            {"error": "Password must be at least 6 characters"},
+            {
+                "error": "Password must be at least 6 characters",
+                "csrf_token": get_or_create_csrf_token(request),
+            },
             status_code=400,
         )
 
@@ -249,6 +278,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "user_email": user_email,
             "appointments": appointments,
             "flash": pop_flash(request),
+            "csrf_token": get_or_create_csrf_token(request),
         },
     )
 
@@ -280,12 +310,16 @@ def book_appointment(
     request: Request,
     date: str = Form(...),
     time: str = Form(...),
+    csrf_token: str = Form(...),
     db: Session = Depends(get_db),
 ):
     user_id = request.session.get("user_id")
     user_email = request.session.get("user")
     if not user_id or not user_email:
         return RedirectResponse("/login", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
 
     try:
         datetime.strptime(date, "%Y-%m-%d")
