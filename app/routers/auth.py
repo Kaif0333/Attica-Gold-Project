@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.audit import log_event
 from app.database import get_db
 from app.login_guard import is_allowed, register_failure, register_success
 from app.models import User
@@ -23,15 +24,19 @@ settings = get_settings()
 
 @router.post("/register", response_model=schemas.RegisterResponse, status_code=201)
 def register(
+    request: Request,
     user_in: schemas.UserCreate,
     db: Session = Depends(get_db),
 ):
+    client_ip = request.client.host if request.client and request.client.host else "unknown"
     password_ok, password_error = validate_password_policy(user_in.password)
     if not password_ok:
+        log_event(db, "API_REGISTER_REJECTED", user_email=user_in.email, ip_address=client_ip, details=password_error)
         raise HTTPException(status_code=400, detail=password_error)
 
     existing_user = db.query(User).filter(User.email == user_in.email).first()
     if existing_user:
+        log_event(db, "API_REGISTER_REJECTED", user_email=user_in.email, ip_address=client_ip, details="Email exists")
         raise HTTPException(status_code=400, detail="Email already registered")
 
     user = User(
@@ -45,8 +50,10 @@ def register(
         db.commit()
     except IntegrityError:
         db.rollback()
+        log_event(db, "API_REGISTER_REJECTED", user_email=user_in.email, ip_address=client_ip, details="IntegrityError")
         raise HTTPException(status_code=400, detail="Email already registered")
     db.refresh(user)
+    log_event(db, "API_REGISTER_SUCCESS", user_id=user.id, user_email=user.email, ip_address=client_ip)
 
     return {"message": "User registered successfully", "user": user}
 
@@ -60,6 +67,7 @@ def login(
     client_ip = request.client.host if request.client and request.client.host else "unknown"
     allowed, retry_after = is_allowed(email=user_in.email, client_ip=client_ip)
     if not allowed:
+        log_event(db, "API_LOGIN_BLOCKED", user_email=user_in.email, ip_address=client_ip)
         raise HTTPException(
             status_code=429,
             detail=f"Too many failed attempts. Try again in {retry_after} seconds",
@@ -70,21 +78,26 @@ def login(
     if not user or not verify_password(user_in.password, user.password):
         still_open, lockout_for = register_failure(email=user_in.email, client_ip=client_ip)
         if not still_open:
+            log_event(db, "API_LOGIN_LOCKOUT", user_email=user_in.email, ip_address=client_ip)
             raise HTTPException(
                 status_code=429,
                 detail=f"Too many failed attempts. Try again in {lockout_for} seconds",
             )
+        log_event(db, "API_LOGIN_FAILED", user_email=user_in.email, ip_address=client_ip)
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     register_success(email=user_in.email, client_ip=client_ip)
+    log_event(db, "API_LOGIN_SUCCESS", user_id=user.id, user_email=user.email, ip_address=client_ip)
     return {"message": "Login successful"}
 
 
 @router.post("/forgot-password", response_model=schemas.ForgotPasswordResponse)
 def forgot_password(
+    request: Request,
     payload: schemas.ForgotPasswordRequest,
     db: Session = Depends(get_db),
 ):
+    client_ip = request.client.host if request.client and request.client.host else "unknown"
     user = db.query(User).filter(User.email == payload.email).first()
     token_for_response = None
     if user:
@@ -94,6 +107,13 @@ def forgot_password(
             minutes=settings.reset_token_ttl_minutes
         )
         db.commit()
+        log_event(
+            db,
+            "API_PASSWORD_RESET_TOKEN_ISSUED",
+            user_id=user.id,
+            user_email=user.email,
+            ip_address=client_ip,
+        )
         if settings.expose_reset_token_in_response:
             token_for_response = raw_token
 
@@ -105,16 +125,20 @@ def forgot_password(
 
 @router.post("/reset-password", response_model=schemas.AuthMessage)
 def reset_password(
+    request: Request,
     payload: schemas.ResetPasswordRequest,
     db: Session = Depends(get_db),
 ):
+    client_ip = request.client.host if request.client and request.client.host else "unknown"
     password_ok, password_error = validate_password_policy(payload.new_password)
     if not password_ok:
+        log_event(db, "API_PASSWORD_RESET_REJECTED", ip_address=client_ip, details=password_error)
         raise HTTPException(status_code=400, detail=password_error)
 
     token_hash = hash_reset_token(payload.token)
     user = db.query(User).filter(User.reset_token_hash == token_hash).first()
     if not user or not user.reset_token_expires_at:
+        log_event(db, "API_PASSWORD_RESET_REJECTED", ip_address=client_ip, details="Invalid token")
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     now = datetime.now(timezone.utc)
@@ -122,11 +146,19 @@ def reset_password(
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at < now:
+        log_event(db, "API_PASSWORD_RESET_REJECTED", ip_address=client_ip, details="Expired token")
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     user.password = hash_password(payload.new_password)
     user.reset_token_hash = None
     user.reset_token_expires_at = None
     db.commit()
+    log_event(
+        db,
+        "API_PASSWORD_RESET_COMPLETED",
+        user_id=user.id,
+        user_email=user.email,
+        ip_address=client_ip,
+    )
 
     return {"message": "Password has been reset successfully"}

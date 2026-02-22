@@ -146,6 +146,7 @@ class WebFlowTests(unittest.TestCase):
         admin_page = self.client.get("/admin")
         self.assertEqual(admin_page.status_code, 200)
         self.assertIn("Admin Console", admin_page.text)
+        self.assertIn("Recent Audit Logs", admin_page.text)
 
     def test_request_id_header_is_present(self) -> None:
         response = self.client.get("/login")

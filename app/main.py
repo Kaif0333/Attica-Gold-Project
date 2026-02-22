@@ -10,10 +10,11 @@ from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.csrf import get_or_create_csrf_token, validate_csrf_token
+from app.audit import log_event
 from app.database import engine, get_db
 from app.login_guard import is_allowed, register_failure, register_success
 from app.migrations import run_migrations
-from app.models import Appointment, User
+from app.models import Appointment, AuditLog, User
 from app.observability import configure_logging, request_logging_middleware
 from app.routers import api_v1, auth, health
 from app.security import (
@@ -69,6 +70,13 @@ def ensure_admin_user() -> None:
         )
         db.add(user)
         db.commit()
+        log_event(
+            db,
+            event_type="ADMIN_BOOTSTRAP_CREATED",
+            user_id=user.id,
+            user_email=user.email,
+            details="Admin user created from environment configuration.",
+        )
 
 
 def set_flash(request: Request, message: str, category: str = "info") -> None:
@@ -151,6 +159,7 @@ def login(
     db: Session = Depends(get_db),
 ):
     if not validate_csrf_token(request, csrf_token):
+        log_event(db, "LOGIN_CSRF_FAILED", user_email=email, ip_address=client_ip(request))
         return templates.TemplateResponse(
             request,
             "login.html",
@@ -164,6 +173,7 @@ def login(
     ip = client_ip(request)
     allowed, retry_after = is_allowed(email=email, client_ip=ip)
     if not allowed:
+        log_event(db, "LOGIN_BLOCKED", user_email=email, ip_address=ip, details="Rate limit lockout.")
         return templates.TemplateResponse(
             request,
             "login.html",
@@ -182,6 +192,9 @@ def login(
         if not still_open:
             message = f"Too many failed attempts. Try again in {lockout_for} seconds."
             status = 429
+            log_event(db, "LOGIN_LOCKOUT", user_email=email, ip_address=ip)
+        else:
+            log_event(db, "LOGIN_FAILED", user_email=email, ip_address=ip)
         return templates.TemplateResponse(
             request,
             "login.html",
@@ -193,6 +206,7 @@ def login(
     request.session["user_id"] = user.id
     request.session["user"] = user.email
     request.session["role"] = user.role or "client"
+    log_event(db, "LOGIN_SUCCESS", user_id=user.id, user_email=user.email, ip_address=ip)
     set_flash(request, "Welcome back.", "success")
     return RedirectResponse("/dashboard", status_code=303)
 
@@ -249,6 +263,7 @@ def register(
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    log_event(db, "USER_REGISTERED", user_id=new_user.id, user_email=new_user.email, ip_address=client_ip(request))
 
     request.session["user_id"] = new_user.id
     request.session["user"] = new_user.email
@@ -293,17 +308,26 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     if not user_id:
         return RedirectResponse("/login", status_code=303)
     if request.session.get("role") != "admin":
+        log_event(
+            db,
+            "ADMIN_ACCESS_DENIED",
+            user_id=user_id,
+            user_email=request.session.get("user"),
+            ip_address=client_ip(request),
+        )
         set_flash(request, "Admin access required.", "error")
         return RedirectResponse("/dashboard", status_code=303)
 
     users = db.query(User).order_by(User.id.desc()).all()
     appointments = db.query(Appointment).order_by(Appointment.created_at.desc()).all()
+    audit_logs = db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(100).all()
     return templates.TemplateResponse(
         request,
         "admin.html",
         {
             "users": users,
             "appointments": appointments,
+            "audit_logs": audit_logs,
             "flash": pop_flash(request),
         },
     )
@@ -348,6 +372,13 @@ def forgot_password(
             minutes=settings.reset_token_ttl_minutes
         )
         db.commit()
+        log_event(
+            db,
+            "PASSWORD_RESET_TOKEN_ISSUED",
+            user_id=user.id,
+            user_email=user.email,
+            ip_address=client_ip(request),
+        )
         if settings.expose_reset_token_in_response:
             reset_token = raw_token
 
@@ -440,6 +471,13 @@ def reset_password(
     user.reset_token_hash = None
     user.reset_token_expires_at = None
     db.commit()
+    log_event(
+        db,
+        "PASSWORD_RESET_COMPLETED",
+        user_id=user.id,
+        user_email=user.email,
+        ip_address=client_ip(request),
+    )
     set_flash(request, "Password reset successful. Please login.", "success")
     return RedirectResponse("/login", status_code=303)
 
@@ -475,12 +513,31 @@ def book_appointment(
     )
     db.add(appointment)
     db.commit()
+    log_event(
+        db,
+        "APPOINTMENT_BOOKED",
+        user_id=user_id,
+        user_email=user_email,
+        ip_address=client_ip(request),
+        details=f"{date} {time}",
+    )
     set_flash(request, "Appointment booked successfully.", "success")
     return RedirectResponse("/dashboard", status_code=303)
 
 
 @app.get("/logout")
 def logout(request: Request):
+    user_id = request.session.get("user_id")
+    user_email = request.session.get("user")
+    with Session(engine) as db:
+        if user_id or user_email:
+            log_event(
+                db,
+                "LOGOUT",
+                user_id=user_id,
+                user_email=user_email,
+                ip_address=client_ip(request),
+            )
     request.session.clear()
     set_flash(request, "You have been logged out.", "info")
     return RedirectResponse("/login", status_code=303)

@@ -24,3 +24,15 @@ class Appointment(Base):
     date = Column(String, nullable=False)
     time = Column(String, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_type = Column(String, index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=True)
+    user_email = Column(String, index=True, nullable=True)
+    ip_address = Column(String, nullable=True)
+    details = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
