@@ -110,6 +110,27 @@ class WebFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("X-Request-ID", response.headers)
 
+    def test_health_and_readiness_endpoints(self) -> None:
+        health = self.client.get("/healthz")
+        readiness = self.client.get("/readyz")
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(health.json().get("status"), "ok")
+        self.assertEqual(readiness.status_code, 200)
+        self.assertEqual(readiness.json().get("status"), "ready")
+
+    def test_api_v1_auth_routes_work(self) -> None:
+        email = f"apiv1_{uuid.uuid4().hex[:8]}@example.com"
+        register = self.client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": "pass1234"},
+        )
+        login = self.client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": "pass1234"},
+        )
+        self.assertEqual(register.status_code, 201)
+        self.assertEqual(login.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()

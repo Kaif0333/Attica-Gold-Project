@@ -13,7 +13,7 @@ from app.database import engine, get_db
 from app.migrations import run_migrations
 from app.models import Appointment, User
 from app.observability import configure_logging, request_logging_middleware
-from app.routers import auth
+from app.routers import api_v1, auth, health
 from app.security import hash_password, verify_password
 from app.settings import get_settings
 
@@ -36,6 +36,8 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(api_v1.router)
+app.include_router(health.router)
 
 
 def ensure_admin_user() -> None:
