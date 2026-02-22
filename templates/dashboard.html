@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | Attica Gold{% endblock %}
+{% block content %}
+<section class="dash-head">
+    <h1>Client Dashboard</h1>
+    <p>Signed in as {{ user_email }}.</p>
+</section>
+
+<section class="panel-grid">
+    <article class="panel">
+        <h3>Book Appointment</h3>
+        <form method="post" action="/book-appointment" class="form-grid">
+            <label for="date">Date</label>
+            <input id="date" type="date" name="date" required>
+
+            <label for="time">Time</label>
+            <input id="time" type="time" name="time" required>
+
+            <button class="btn btn-primary" type="submit">Book Slot</button>
+        </form>
+    </article>
+
+    <article class="panel wide">
+        <h3>Your Appointments</h3>
+        {% if appointments %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Email</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for appt in appointments %}
+                <tr>
+                    <td>{{ appt.date }}</td>
+                    <td>{{ appt.time }}</td>
+                    <td>{{ appt.user_email }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="muted">No appointments yet.</p>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}

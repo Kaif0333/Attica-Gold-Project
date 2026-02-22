@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Admin Console | Attica Gold{% endblock %}
+{% block content %}
+<section class="dash-head">
+    <h1>Admin Console</h1>
+    <p>Global visibility across users and appointments.</p>
+</section>
+
+<section class="panel-grid">
+    <article class="panel wide">
+        <h3>Users</h3>
+        {% if users %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user.id }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>{{ user.role }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="muted">No users found.</p>
+        {% endif %}
+    </article>
+
+    <article class="panel wide">
+        <h3>All Appointments</h3>
+        {% if appointments %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>User ID</th>
+                    <th>Email</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for appt in appointments %}
+                <tr>
+                    <td>{{ appt.date }}</td>
+                    <td>{{ appt.time }}</td>
+                    <td>{{ appt.user_id }}</td>
+                    <td>{{ appt.user_email }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="muted">No appointments found.</p>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Register | Attica Gold{% endblock %}
+{% block content %}
+<section class="auth-shell">
+    <div class="auth-card">
+        <h1>Create Account</h1>
+        <p>Register to manage appointments and secure financing support.</p>
+
+        {% if error %}
+        <div class="alert alert-error">{{ error }}</div>
+        {% endif %}
+
+        <form method="post" action="/register" class="form-grid">
+            <label for="email">Business Email</label>
+            <input id="email" type="email" name="email" placeholder="name@company.com" required>
+
+            <label for="password">Password</label>
+            <input id="password" type="password" name="password" placeholder="Minimum 6 characters" required>
+
+            <button class="btn btn-primary" type="submit">Create Account</button>
+        </form>
+
+        <p class="auth-footer">
+            Already registered? <a href="/login">Login</a>
+        </p>
+    </div>
+</section>
+{% endblock %}

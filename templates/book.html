@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-md mx-auto bg-white p-8 rounded shadow">
+    <h2 class="text-2xl font-bold text-center text-yellow-600 mb-6">
+        Book Appointment
+    </h2>
+
+    <form method="post" action="/book">
+        <label class="block mb-2">Date</label>
+        <input type="date" name="date" class="w-full border p-2 mb-4" required>
+
+        <label class="block mb-2">Time</label>
+        <input type="time" name="time" class="w-full border p-2 mb-6" required>
+
+        <button class="w-full bg-black text-white p-2 rounded hover:bg-yellow-600">
+            Book Appointment
+        </button>
+    </form>
+</div>
+{% endblock %}
