@@ -28,6 +28,7 @@ class WebFlowTests(unittest.TestCase):
         return match.group(1)
 
     def test_register_login_book_and_user_isolation(self) -> None:
+        strong_password = "Pass#1234"
         email1 = f"user1_{uuid.uuid4().hex[:8]}@example.com"
         email2 = f"user2_{uuid.uuid4().hex[:8]}@example.com"
 
@@ -36,7 +37,7 @@ class WebFlowTests(unittest.TestCase):
             "/register",
             data={
                 "email": email1,
-                "password": "pass1234",
+                "password": strong_password,
                 "csrf_token": self._csrf_token_from_page("/register"),
             },
             follow_redirects=False,
@@ -61,7 +62,7 @@ class WebFlowTests(unittest.TestCase):
             "/register",
             data={
                 "email": email2,
-                "password": "pass1234",
+                "password": strong_password,
                 "csrf_token": self._csrf_token_from_page("/register"),
             },
             follow_redirects=False,
@@ -87,12 +88,13 @@ class WebFlowTests(unittest.TestCase):
         self.assertNotIn("2026-03-05", dashboard_2.text)
 
     def test_invalid_booking_shows_error_flash(self) -> None:
+        strong_password = "Pass#1234"
         email = f"user_{uuid.uuid4().hex[:8]}@example.com"
         self.client.post(
             "/register",
             data={
                 "email": email,
-                "password": "pass1234",
+                "password": strong_password,
                 "csrf_token": self._csrf_token_from_page("/register"),
             },
             follow_redirects=False,
@@ -114,10 +116,11 @@ class WebFlowTests(unittest.TestCase):
         self.assertIn("Invalid date or time format.", dashboard.text)
 
     def test_admin_access_control(self) -> None:
+        strong_password = "Pass#1234"
         email = f"admin_{uuid.uuid4().hex[:8]}@example.com"
         db = SessionLocal()
         try:
-            admin_user = User(email=email, password=hash_password("pass1234"), role="admin")
+            admin_user = User(email=email, password=hash_password(strong_password), role="admin")
             db.add(admin_user)
             db.commit()
         finally:
@@ -133,7 +136,7 @@ class WebFlowTests(unittest.TestCase):
             "/login",
             data={
                 "email": email,
-                "password": "pass1234",
+                "password": strong_password,
                 "csrf_token": self._csrf_token_from_page("/login"),
             },
             follow_redirects=False,
@@ -158,25 +161,27 @@ class WebFlowTests(unittest.TestCase):
         self.assertEqual(readiness.json().get("status"), "ready")
 
     def test_api_v1_auth_routes_work(self) -> None:
+        strong_password = "Pass#1234"
         email = f"apiv1_{uuid.uuid4().hex[:8]}@example.com"
         register = self.client.post(
             "/api/v1/auth/register",
-            json={"email": email, "password": "pass1234"},
+            json={"email": email, "password": strong_password},
         )
         login = self.client.post(
             "/api/v1/auth/login",
-            json={"email": email, "password": "pass1234"},
+            json={"email": email, "password": strong_password},
         )
         self.assertEqual(register.status_code, 201)
         self.assertEqual(login.status_code, 200)
 
     def test_api_login_rate_limit_and_lockout(self) -> None:
+        strong_password = "Pass#1234"
         settings = get_settings()
         email = f"limit_{uuid.uuid4().hex[:8]}@example.com"
 
         self.client.post(
             "/api/v1/auth/register",
-            json={"email": email, "password": "pass1234"},
+            json={"email": email, "password": strong_password},
         )
 
         last_status = None
@@ -201,12 +206,72 @@ class WebFlowTests(unittest.TestCase):
             "/register",
             data={
                 "email": email,
-                "password": "pass1234",
+                "password": "Pass#1234",
                 "csrf_token": "invalid-token",
             },
             follow_redirects=False,
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_web_password_reset_flow(self) -> None:
+        original_password = "Pass#1234"
+        new_password = "New#5678Pass"
+        email = f"reset_{uuid.uuid4().hex[:8]}@example.com"
+
+        register = self.client.post(
+            "/register",
+            data={
+                "email": email,
+                "password": original_password,
+                "csrf_token": self._csrf_token_from_page("/register"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(register.status_code, 303)
+        self.client.get("/logout", follow_redirects=False)
+
+        forgot = self.client.post(
+            "/forgot-password",
+            data={"email": email, "csrf_token": self._csrf_token_from_page("/forgot-password")},
+        )
+        self.assertEqual(forgot.status_code, 200)
+        token_match = re.search(r"Dev reset token: <code>([^<]+)</code>", forgot.text)
+        self.assertIsNotNone(token_match)
+        reset_token = token_match.group(1)
+
+        reset = self.client.post(
+            "/reset-password",
+            data={
+                "token": reset_token,
+                "new_password": new_password,
+                "csrf_token": self._csrf_token_from_page(f"/reset-password?token={reset_token}"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(reset.status_code, 303)
+        self.assertEqual(reset.headers.get("location"), "/login")
+
+        old_login = self.client.post(
+            "/login",
+            data={
+                "email": email,
+                "password": original_password,
+                "csrf_token": self._csrf_token_from_page("/login"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(old_login.status_code, 401)
+
+        new_login = self.client.post(
+            "/login",
+            data={
+                "email": email,
+                "password": new_password,
+                "csrf_token": self._csrf_token_from_page("/login"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(new_login.status_code, 303)
 
 
 if __name__ == "__main__":

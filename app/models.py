@@ -11,6 +11,8 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     password = Column(String, nullable=False)
     role = Column(String, nullable=False, default="client")
+    reset_token_hash = Column(String, nullable=True)
+    reset_token_expires_at = Column(DateTime, nullable=True)
 
 
 class Appointment(Base):

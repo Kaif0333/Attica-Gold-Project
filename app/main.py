@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -16,7 +16,13 @@ from app.migrations import run_migrations
 from app.models import Appointment, User
 from app.observability import configure_logging, request_logging_middleware
 from app.routers import api_v1, auth, health
-from app.security import hash_password, verify_password
+from app.security import (
+    generate_reset_token,
+    hash_password,
+    hash_reset_token,
+    validate_password_policy,
+    verify_password,
+)
 from app.settings import get_settings
 
 settings = get_settings()
@@ -221,23 +227,21 @@ def register(
             status_code=403,
         )
 
+    password_ok, password_error = validate_password_policy(password)
+    if not password_ok:
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {"error": password_error, "csrf_token": get_or_create_csrf_token(request)},
+            status_code=400,
+        )
+
     existing_user = db.query(User).filter(User.email == email).first()
     if existing_user:
         return templates.TemplateResponse(
             request,
             "register.html",
             {"error": "Email already registered", "csrf_token": get_or_create_csrf_token(request)},
-            status_code=400,
-        )
-
-    if len(password) < 6:
-        return templates.TemplateResponse(
-            request,
-            "register.html",
-            {
-                "error": "Password must be at least 6 characters",
-                "csrf_token": get_or_create_csrf_token(request),
-            },
             status_code=400,
         )
 
@@ -303,6 +307,141 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "flash": pop_flash(request),
         },
     )
+
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+def forgot_password_page(request: Request):
+    if request.session.get("user_id"):
+        return RedirectResponse("/dashboard", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "forgot_password.html",
+        {"csrf_token": get_or_create_csrf_token(request), "flash": pop_flash(request)},
+    )
+
+
+@app.post("/forgot-password", response_class=HTMLResponse)
+def forgot_password(
+    request: Request,
+    email: str = Form(...),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    if not validate_csrf_token(request, csrf_token):
+        return templates.TemplateResponse(
+            request,
+            "forgot_password.html",
+            {
+                "error": "Invalid security token. Please refresh and try again.",
+                "csrf_token": get_or_create_csrf_token(request),
+            },
+            status_code=403,
+        )
+
+    message = "If the account exists, reset instructions have been generated."
+    reset_token = None
+    user = db.query(User).filter(User.email == email).first()
+    if user:
+        raw_token = generate_reset_token()
+        user.reset_token_hash = hash_reset_token(raw_token)
+        user.reset_token_expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.reset_token_ttl_minutes
+        )
+        db.commit()
+        if settings.expose_reset_token_in_response:
+            reset_token = raw_token
+
+    return templates.TemplateResponse(
+        request,
+        "forgot_password.html",
+        {
+            "message": message,
+            "reset_token": reset_token,
+            "csrf_token": get_or_create_csrf_token(request),
+        },
+    )
+
+
+@app.get("/reset-password", response_class=HTMLResponse)
+def reset_password_page(request: Request, token: str = ""):
+    if request.session.get("user_id"):
+        return RedirectResponse("/dashboard", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "reset_password.html",
+        {"token": token, "csrf_token": get_or_create_csrf_token(request)},
+    )
+
+
+@app.post("/reset-password", response_class=HTMLResponse)
+def reset_password(
+    request: Request,
+    token: str = Form(...),
+    new_password: str = Form(...),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    if not validate_csrf_token(request, csrf_token):
+        return templates.TemplateResponse(
+            request,
+            "reset_password.html",
+            {
+                "error": "Invalid security token. Please refresh and try again.",
+                "token": token,
+                "csrf_token": get_or_create_csrf_token(request),
+            },
+            status_code=403,
+        )
+
+    password_ok, password_error = validate_password_policy(new_password)
+    if not password_ok:
+        return templates.TemplateResponse(
+            request,
+            "reset_password.html",
+            {
+                "error": password_error,
+                "token": token,
+                "csrf_token": get_or_create_csrf_token(request),
+            },
+            status_code=400,
+        )
+
+    token_hash = hash_reset_token(token)
+    user = db.query(User).filter(User.reset_token_hash == token_hash).first()
+    if not user or not user.reset_token_expires_at:
+        return templates.TemplateResponse(
+            request,
+            "reset_password.html",
+            {
+                "error": "Invalid or expired reset token.",
+                "token": token,
+                "csrf_token": get_or_create_csrf_token(request),
+            },
+            status_code=400,
+        )
+
+    now = datetime.now(timezone.utc)
+    expires_at = user.reset_token_expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < now:
+        return templates.TemplateResponse(
+            request,
+            "reset_password.html",
+            {
+                "error": "Invalid or expired reset token.",
+                "token": token,
+                "csrf_token": get_or_create_csrf_token(request),
+            },
+            status_code=400,
+        )
+
+    user.password = hash_password(new_password)
+    user.reset_token_hash = None
+    user.reset_token_expires_at = None
+    db.commit()
+    set_flash(request, "Password reset successful. Please login.", "success")
+    return RedirectResponse("/login", status_code=303)
 
 
 @app.post("/book-appointment")

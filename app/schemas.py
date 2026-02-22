@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr
+from typing import Optional
 
 
 class UserCreate(BaseModel):
@@ -27,3 +28,17 @@ class AuthMessage(BaseModel):
 class RegisterResponse(BaseModel):
     message: str
     user: UserOut
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    reset_token: Optional[str] = None
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str

@@ -34,6 +34,9 @@ class Settings:
     login_max_attempts: int
     login_window_seconds: int
     login_lockout_seconds: int
+    password_min_length: int
+    reset_token_ttl_minutes: int
+    expose_reset_token_in_response: bool
     admin_email: str
     admin_password: str
 
@@ -64,6 +67,12 @@ def get_settings() -> Settings:
         login_max_attempts=_as_int(os.getenv("LOGIN_MAX_ATTEMPTS"), default=5),
         login_window_seconds=_as_int(os.getenv("LOGIN_WINDOW_SECONDS"), default=900),
         login_lockout_seconds=_as_int(os.getenv("LOGIN_LOCKOUT_SECONDS"), default=900),
+        password_min_length=_as_int(os.getenv("PASSWORD_MIN_LENGTH"), default=8),
+        reset_token_ttl_minutes=_as_int(os.getenv("RESET_TOKEN_TTL_MINUTES"), default=30),
+        expose_reset_token_in_response=_as_bool(
+            os.getenv("EXPOSE_RESET_TOKEN_IN_RESPONSE"),
+            default=environment != "production",
+        ),
         admin_email=os.getenv("ATTICA_ADMIN_EMAIL", ""),
         admin_password=os.getenv("ATTICA_ADMIN_PASSWORD", ""),
     )
