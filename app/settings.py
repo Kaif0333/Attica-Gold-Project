@@ -19,6 +19,7 @@ class Settings:
     session_same_site: str
     docs_enabled: bool
     redoc_enabled: bool
+    auto_run_migrations: bool
     admin_email: str
     admin_password: str
 
@@ -29,6 +30,10 @@ def get_settings() -> Settings:
     docs_default = environment != "production"
     docs_enabled = _as_bool(os.getenv("DOCS_ENABLED"), default=docs_default)
     redoc_enabled = _as_bool(os.getenv("REDOC_ENABLED"), default=docs_default)
+    auto_run_migrations = _as_bool(
+        os.getenv("AUTO_RUN_MIGRATIONS"),
+        default=environment != "production",
+    )
 
     return Settings(
         app_name=os.getenv("APP_NAME", "Attica Gold Backend"),
@@ -39,6 +44,7 @@ def get_settings() -> Settings:
         session_same_site=os.getenv("SESSION_SAMESITE", "lax"),
         docs_enabled=docs_enabled,
         redoc_enabled=redoc_enabled,
+        auto_run_migrations=auto_run_migrations,
         admin_email=os.getenv("ATTICA_ADMIN_EMAIL", ""),
         admin_password=os.getenv("ATTICA_ADMIN_PASSWORD", ""),
     )

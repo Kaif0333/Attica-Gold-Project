@@ -4,11 +4,12 @@ from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import inspect, or_, text
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.database import Base, engine, get_db
+from app.database import engine, get_db
+from app.migrations import run_migrations
 from app.models import Appointment, User
 from app.routers import auth
 from app.security import hash_password, verify_password
@@ -31,26 +32,7 @@ app.add_middleware(
     https_only=settings.session_https_only,
 )
 
-Base.metadata.create_all(bind=engine)
 app.include_router(auth.router)
-
-
-def ensure_schema_compatibility() -> None:
-    inspector = inspect(engine)
-    tables = inspector.get_table_names()
-
-    if "appointments" in tables:
-        appointment_columns = {col["name"] for col in inspector.get_columns("appointments")}
-        if "user_id" not in appointment_columns:
-            with engine.begin() as connection:
-                connection.execute(text("ALTER TABLE appointments ADD COLUMN user_id INTEGER"))
-
-    if "users" in tables:
-        user_columns = {col["name"] for col in inspector.get_columns("users")}
-        if "role" not in user_columns:
-            with engine.begin() as connection:
-                connection.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR"))
-                connection.execute(text("UPDATE users SET role = 'client' WHERE role IS NULL"))
 
 
 def ensure_admin_user() -> None:
@@ -84,7 +66,8 @@ def pop_flash(request: Request):
     return request.session.pop("flash", None)
 
 
-ensure_schema_compatibility()
+if settings.auto_run_migrations:
+    run_migrations()
 ensure_admin_user()
 
 
