@@ -8,7 +8,13 @@
 </head>
 <body>
     <header class="topbar">
-        <a class="brand" href="/">Attica Gold</a>
+        <a class="brand" href="/">
+            <span class="brand-mark">AG</span>
+            <span class="brand-copy">
+                <strong>Attica Gold</strong>
+                <small>Premium Finance Company</small>
+            </span>
+        </a>
         <nav class="nav">
             <a href="/">Home</a>
             {% if request.session.get("user_id") %}
@@ -30,5 +36,9 @@
         {% endif %}
         {% block content %}{% endblock %}
     </main>
+
+    <footer class="site-footer">
+        <p>Attica Gold Company. Built for trust, speed, and enterprise reliability.</p>
+    </footer>
 </body>
 </html>
