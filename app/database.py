@@ -1,10 +1,17 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DATABASE_URL = "sqlite:///./attica_gold.db"
+from app.settings import get_settings
+
+settings = get_settings()
+database_url = settings.database_url
+
+connect_args = {}
+if database_url.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
 
 engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False}
+    database_url, connect_args=connect_args
 )
 
 SessionLocal = sessionmaker(

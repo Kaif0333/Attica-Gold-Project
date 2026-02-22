@@ -1,5 +1,4 @@
 from datetime import datetime
-import os
 
 from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -13,19 +12,23 @@ from app.database import Base, engine, get_db
 from app.models import Appointment, User
 from app.routers import auth
 from app.security import hash_password, verify_password
+from app.settings import get_settings
 
-app = FastAPI(title="Attica Gold Backend")
+settings = get_settings()
+
+app = FastAPI(
+    title=settings.app_name,
+    docs_url="/docs" if settings.docs_enabled else None,
+    redoc_url="/redoc" if settings.redoc_enabled else None,
+)
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-secret_key = os.getenv("ATTICA_SECRET_KEY", "attica-gold-secret-key")
-session_https_only = os.getenv("SESSION_HTTPS_ONLY", "0") == "1"
-
 app.add_middleware(
     SessionMiddleware,
-    secret_key=secret_key,
-    same_site="lax",
-    https_only=session_https_only,
+    secret_key=settings.secret_key,
+    same_site=settings.session_same_site,
+    https_only=settings.session_https_only,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -51,8 +54,8 @@ def ensure_schema_compatibility() -> None:
 
 
 def ensure_admin_user() -> None:
-    admin_email = os.getenv("ATTICA_ADMIN_EMAIL")
-    admin_password = os.getenv("ATTICA_ADMIN_PASSWORD")
+    admin_email = settings.admin_email
+    admin_password = settings.admin_password
     if not admin_email or not admin_password:
         return
 
