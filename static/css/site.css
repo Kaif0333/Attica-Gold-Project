@@ -186,6 +186,15 @@ body {
     box-shadow: 0 10px 22px rgba(51, 35, 7, 0.08);
 }
 
+.interactive-panel {
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.interactive-panel:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 18px 34px rgba(51, 35, 7, 0.14);
+}
+
 .panel.wide {
     grid-column: span 8;
 }
@@ -217,6 +226,32 @@ body {
 .brand-band-item p {
     margin: 0;
     color: var(--muted);
+}
+
+.brand-stats {
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.stat-card {
+    background: linear-gradient(135deg, #fff7e8 0%, #ffffff 100%);
+    border: 1px solid #ecdcbf;
+    border-radius: 14px;
+    padding: 14px 16px;
+}
+
+.stat-card h3 {
+    margin: 0;
+    color: #7b5514;
+    font-size: 1.6rem;
+}
+
+.stat-card p {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 0.9rem;
 }
 
 .auth-shell {
@@ -380,6 +415,17 @@ input:focus {
     color: var(--alert-info-ink);
 }
 
+.reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.reveal.revealed {
+    opacity: 1;
+    transform: translateY(0);
+}
+
 .site-footer {
     width: min(1100px, 92%);
     margin: 0 auto 24px;
@@ -414,6 +460,10 @@ input:focus {
     }
 
     .brand-band {
+        grid-template-columns: 1fr;
+    }
+
+    .brand-stats {
         grid-template-columns: 1fr;
     }
 }

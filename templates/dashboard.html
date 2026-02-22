@@ -8,7 +8,7 @@
 </section>
 
 <section class="panel-grid">
-    <article class="panel">
+    <article class="panel reveal interactive-panel">
         <h3>Book Appointment</h3>
         <form method="post" action="/book-appointment" class="form-grid">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -22,10 +22,11 @@
         </form>
     </article>
 
-    <article class="panel wide">
+    <article class="panel wide reveal">
         <h3>Your Appointments</h3>
+        <input type="text" placeholder="Search by date, time, or email" data-filter-target="#appointments-table">
         {% if appointments %}
-        <table class="table">
+        <table class="table" id="appointments-table">
             <thead>
                 <tr>
                     <th>Date</th>
