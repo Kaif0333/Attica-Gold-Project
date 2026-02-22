@@ -28,6 +28,7 @@ from app.settings import get_settings
 
 settings = get_settings()
 logger = configure_logging()
+ALLOWED_ROLES = {"client", "staff", "admin"}
 
 app = FastAPI(
     title=settings.app_name,
@@ -328,9 +329,108 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "users": users,
             "appointments": appointments,
             "audit_logs": audit_logs,
+            "csrf_token": get_or_create_csrf_token(request),
             "flash": pop_flash(request),
         },
     )
+
+
+@app.post("/admin/users/{target_user_id}/role")
+def update_user_role(
+    request: Request,
+    target_user_id: int,
+    role: str = Form(...),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    actor_role = request.session.get("role")
+    ip = client_ip(request)
+
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if actor_role != "admin":
+        log_event(
+            db,
+            "ADMIN_ROLE_CHANGE_DENIED",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=ip,
+            details="Non-admin tried to change role.",
+        )
+        set_flash(request, "Admin access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+
+    if not validate_csrf_token(request, csrf_token):
+        log_event(
+            db,
+            "ADMIN_ROLE_CHANGE_DENIED",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=ip,
+            details="Invalid CSRF token.",
+        )
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    if role not in ALLOWED_ROLES:
+        log_event(
+            db,
+            "ADMIN_ROLE_CHANGE_DENIED",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=ip,
+            details=f"Invalid role value: {role}",
+        )
+        set_flash(request, "Invalid role selected.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    target_user = db.query(User).filter(User.id == target_user_id).first()
+    if not target_user:
+        set_flash(request, "Target user not found.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    # Safety rule: do not allow self-demotion from admin in current session.
+    if target_user.id == actor_id and role != "admin":
+        log_event(
+            db,
+            "ADMIN_ROLE_CHANGE_DENIED",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=ip,
+            details="Self-demotion blocked.",
+        )
+        set_flash(request, "You cannot demote your own admin account.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    previous_role = target_user.role
+    if previous_role == "admin" and role != "admin":
+        admin_count = db.query(User).filter(User.role == "admin").count()
+        if admin_count <= 1:
+            log_event(
+                db,
+                "ADMIN_ROLE_CHANGE_DENIED",
+                user_id=actor_id,
+                user_email=actor_email,
+                ip_address=ip,
+                details="Cannot demote last admin.",
+            )
+            set_flash(request, "At least one admin account must remain.", "error")
+            return RedirectResponse("/admin", status_code=303)
+
+    target_user.role = role
+    db.commit()
+    log_event(
+        db,
+        "ADMIN_ROLE_UPDATED",
+        user_id=actor_id,
+        user_email=actor_email,
+        ip_address=ip,
+        details=f"Changed user {target_user.email} role from {previous_role} to {role}.",
+    )
+    set_flash(request, "User role updated successfully.", "success")
+    return RedirectResponse("/admin", status_code=303)
 
 
 @app.get("/forgot-password", response_class=HTMLResponse)

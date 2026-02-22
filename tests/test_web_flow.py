@@ -274,6 +274,91 @@ class WebFlowTests(unittest.TestCase):
         )
         self.assertEqual(new_login.status_code, 303)
 
+    def test_admin_can_update_user_role(self) -> None:
+        strong_password = "Pass#1234"
+        admin_email = f"admin_role_{uuid.uuid4().hex[:8]}@example.com"
+        target_email = f"target_role_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            admin_user = User(email=admin_email, password=hash_password(strong_password), role="admin")
+            target_user = User(email=target_email, password=hash_password(strong_password), role="client")
+            db.add(admin_user)
+            db.add(target_user)
+            db.commit()
+            db.refresh(target_user)
+            target_id = target_user.id
+        finally:
+            db.close()
+
+        login = self.client.post(
+            "/login",
+            data={
+                "email": admin_email,
+                "password": strong_password,
+                "csrf_token": self._csrf_token_from_page("/login"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(login.status_code, 303)
+
+        update = self.client.post(
+            f"/admin/users/{target_id}/role",
+            data={"role": "staff", "csrf_token": self._csrf_token_from_page("/admin")},
+            follow_redirects=False,
+        )
+        self.assertEqual(update.status_code, 303)
+        self.assertEqual(update.headers.get("location"), "/admin")
+
+        db = SessionLocal()
+        try:
+            updated_user = db.query(User).filter(User.id == target_id).first()
+            self.assertIsNotNone(updated_user)
+            self.assertEqual(updated_user.role, "staff")
+        finally:
+            db.close()
+
+    def test_admin_self_demotion_is_blocked(self) -> None:
+        strong_password = "Pass#1234"
+        admin_email = f"admin_self_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            admin_user = User(email=admin_email, password=hash_password(strong_password), role="admin")
+            db.add(admin_user)
+            db.commit()
+            db.refresh(admin_user)
+            admin_id = admin_user.id
+        finally:
+            db.close()
+
+        login = self.client.post(
+            "/login",
+            data={
+                "email": admin_email,
+                "password": strong_password,
+                "csrf_token": self._csrf_token_from_page("/login"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(login.status_code, 303)
+
+        demote = self.client.post(
+            f"/admin/users/{admin_id}/role",
+            data={"role": "client", "csrf_token": self._csrf_token_from_page("/admin")},
+            follow_redirects=False,
+        )
+        self.assertEqual(demote.status_code, 303)
+        self.assertEqual(demote.headers.get("location"), "/admin")
+
+        db = SessionLocal()
+        try:
+            still_admin = db.query(User).filter(User.id == admin_id).first()
+            self.assertIsNotNone(still_admin)
+            self.assertEqual(still_admin.role, "admin")
+        finally:
+            db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

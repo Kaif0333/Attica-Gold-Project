@@ -16,6 +16,7 @@
                     <th>ID</th>
                     <th>Email</th>
                     <th>Role</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -24,6 +25,17 @@
                     <td>{{ user.id }}</td>
                     <td>{{ user.email }}</td>
                     <td>{{ user.role }}</td>
+                    <td>
+                        <form method="post" action="/admin/users/{{ user.id }}/role" class="form-grid">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <select name="role">
+                                <option value="client" {% if user.role == "client" %}selected{% endif %}>client</option>
+                                <option value="staff" {% if user.role == "staff" %}selected{% endif %}>staff</option>
+                                <option value="admin" {% if user.role == "admin" %}selected{% endif %}>admin</option>
+                            </select>
+                            <button class="btn btn-primary" type="submit">Update</button>
+                        </form>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
