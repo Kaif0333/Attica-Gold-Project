@@ -20,6 +20,8 @@ class Settings:
     docs_enabled: bool
     redoc_enabled: bool
     auto_run_migrations: bool
+    log_level: str
+    request_id_header: str
     admin_email: str
     admin_password: str
 
@@ -45,6 +47,8 @@ def get_settings() -> Settings:
         docs_enabled=docs_enabled,
         redoc_enabled=redoc_enabled,
         auto_run_migrations=auto_run_migrations,
+        log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        request_id_header=os.getenv("REQUEST_ID_HEADER", "X-Request-ID"),
         admin_email=os.getenv("ATTICA_ADMIN_EMAIL", ""),
         admin_password=os.getenv("ATTICA_ADMIN_PASSWORD", ""),
     )

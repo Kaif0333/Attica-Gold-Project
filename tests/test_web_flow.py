@@ -105,6 +105,11 @@ class WebFlowTests(unittest.TestCase):
         self.assertEqual(admin_page.status_code, 200)
         self.assertIn("Admin Console", admin_page.text)
 
+    def test_request_id_header_is_present(self) -> None:
+        response = self.client.get("/login")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("X-Request-ID", response.headers)
+
 
 if __name__ == "__main__":
     unittest.main()

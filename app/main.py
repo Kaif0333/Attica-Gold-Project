@@ -2,6 +2,7 @@ from datetime import datetime
 
 from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_
@@ -11,11 +12,13 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.database import engine, get_db
 from app.migrations import run_migrations
 from app.models import Appointment, User
+from app.observability import configure_logging, request_logging_middleware
 from app.routers import auth
 from app.security import hash_password, verify_password
 from app.settings import get_settings
 
 settings = get_settings()
+logger = configure_logging()
 
 app = FastAPI(
     title=settings.app_name,
@@ -71,6 +74,9 @@ if settings.auto_run_migrations:
 ensure_admin_user()
 
 
+app.middleware("http")(request_logging_middleware(logger))
+
+
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
@@ -79,6 +85,21 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
     return response
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    request_id = getattr(request.state, "request_id", "unknown")
+    logger.exception(
+        "Unhandled error request_id=%s method=%s path=%s",
+        request_id,
+        request.method,
+        request.url.path,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "request_id": request_id},
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
