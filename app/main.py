@@ -293,6 +293,17 @@ def about_page(request: Request):
     )
 
 
+@app.get("/campaign", response_class=HTMLResponse)
+def campaign_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "campaign.html",
+        {
+            "flash": pop_flash(request),
+        },
+    )
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     if request.session.get("user_id"):

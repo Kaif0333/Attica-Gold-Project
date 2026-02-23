@@ -19,6 +19,7 @@
         <nav class="nav">
             <a href="/">Home</a>
             <a href="/about">About</a>
+            <a href="/campaign">Campaign</a>
             {% if request.session.get("user_id") %}
             <a href="/dashboard">Dashboard</a>
             {% if request.session.get("role") in ["staff", "admin"] %}
