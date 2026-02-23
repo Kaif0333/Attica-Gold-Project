@@ -77,6 +77,8 @@ class Settings:
 def get_settings() -> Settings:
     environment = os.getenv("ENVIRONMENT", "development")
     docs_default = environment != "production"
+    session_https_default = environment == "production"
+    session_same_site_default = "strict" if environment == "production" else "lax"
     docs_enabled = _as_bool(os.getenv("DOCS_ENABLED"), default=docs_default)
     redoc_enabled = _as_bool(os.getenv("REDOC_ENABLED"), default=docs_default)
     auto_run_migrations = _as_bool(
@@ -89,8 +91,11 @@ def get_settings() -> Settings:
         environment=environment,
         database_url=os.getenv("DATABASE_URL", "sqlite:///./attica_gold.db"),
         secret_key=os.getenv("ATTICA_SECRET_KEY", "attica-gold-secret-key"),
-        session_https_only=_as_bool(os.getenv("SESSION_HTTPS_ONLY"), default=False),
-        session_same_site=os.getenv("SESSION_SAMESITE", "lax"),
+        session_https_only=_as_bool(
+            os.getenv("SESSION_HTTPS_ONLY"),
+            default=session_https_default,
+        ),
+        session_same_site=os.getenv("SESSION_SAMESITE", session_same_site_default).strip().lower(),
         docs_enabled=docs_enabled,
         redoc_enabled=redoc_enabled,
         auto_run_migrations=auto_run_migrations,

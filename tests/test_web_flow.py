@@ -169,6 +169,15 @@ class WebFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("X-Request-ID", response.headers)
 
+    def test_security_headers_are_applied(self) -> None:
+        response = self.client.get("/login")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get("X-Frame-Options"), "DENY")
+        self.assertEqual(response.headers.get("X-Content-Type-Options"), "nosniff")
+        self.assertIn("Content-Security-Policy", response.headers)
+        # Tests run in development defaults, so HSTS should not be forced.
+        self.assertNotIn("Strict-Transport-Security", response.headers)
+
     def test_health_and_readiness_endpoints(self) -> None:
         health = self.client.get("/healthz")
         readiness = self.client.get("/readyz")
