@@ -5,10 +5,13 @@
     <p class="tag">Attica Gold Operations</p>
     <h1>Admin Console</h1>
     <p>Global visibility across users and appointments.</p>
-    <form method="post" action="/admin/smtp-check" class="form-grid" style="max-width: 320px;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button class="btn btn-primary" type="submit">Send SMTP Test Email</button>
-    </form>
+    <div class="form-grid" style="max-width: 420px;">
+        <form method="post" action="/admin/smtp-check">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-primary" type="submit">Send SMTP Test Email</button>
+        </form>
+        <a class="btn" href="/admin/bootstrap-status">View Admin Bootstrap Status</a>
+    </div>
 </section>
 
 <section class="panel-grid">

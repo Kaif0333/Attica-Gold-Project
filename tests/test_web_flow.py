@@ -1,6 +1,11 @@
 import unittest
 import uuid
 import re
+import os
+
+os.environ["EXPOSE_OTP_IN_RESPONSE"] = "1"
+os.environ["EXPOSE_RESET_TOKEN_IN_RESPONSE"] = "1"
+os.environ["SMTP_ENABLED"] = "0"
 
 from fastapi.testclient import TestClient
 
@@ -354,6 +359,33 @@ class WebFlowTests(unittest.TestCase):
 
         admin_page = self.client.get("/admin")
         self.assertIn("SMTP is disabled", admin_page.text)
+
+    def test_admin_bootstrap_status_endpoint(self) -> None:
+        strong_password = "Pass#1234"
+        admin_email = f"admin_bootstrap_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            admin_user = User(email=admin_email, password=hash_password(strong_password), role="admin")
+            db.add(admin_user)
+            db.commit()
+        finally:
+            db.close()
+
+        anonymous = self.client.get("/admin/bootstrap-status", follow_redirects=False)
+        self.assertEqual(anonymous.status_code, 303)
+        self.assertEqual(anonymous.headers.get("location"), "/login")
+
+        login_status = self._login_with_otp(admin_email, strong_password)
+        self.assertEqual(login_status, 303)
+
+        status = self.client.get("/admin/bootstrap-status")
+        self.assertEqual(status.status_code, 200)
+        payload = status.json()
+        self.assertIn("bootstrap_configured", payload)
+        self.assertIn("bootstrap_email", payload)
+        self.assertIn("admin_user_exists", payload)
+        self.assertIn("admin_user_role", payload)
 
 
 if __name__ == "__main__":

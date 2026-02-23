@@ -656,6 +656,40 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     )
 
 
+@app.get("/admin/bootstrap-status")
+def admin_bootstrap_status(request: Request, db: Session = Depends(get_db)):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    actor_role = request.session.get("role")
+    ip = client_ip(request)
+
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if actor_role != "admin":
+        log_event(
+            db,
+            "ADMIN_BOOTSTRAP_STATUS_DENIED",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=ip,
+            details="Non-admin tried to view bootstrap status.",
+        )
+        set_flash(request, "Admin access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+
+    configured = bool(settings.admin_email and settings.admin_password)
+    admin_user = None
+    if settings.admin_email:
+        admin_user = db.query(User).filter(User.email == settings.admin_email).first()
+
+    return {
+        "bootstrap_configured": configured,
+        "bootstrap_email": settings.admin_email or None,
+        "admin_user_exists": bool(admin_user),
+        "admin_user_role": admin_user.role if admin_user else None,
+    }
+
+
 @app.post("/admin/users/{target_user_id}/role")
 def update_user_role(
     request: Request,
