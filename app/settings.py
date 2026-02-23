@@ -39,6 +39,14 @@ class Settings:
     expose_reset_token_in_response: bool
     otp_ttl_seconds: int
     expose_otp_in_response: bool
+    smtp_enabled: bool
+    smtp_host: str
+    smtp_port: int
+    smtp_username: str
+    smtp_password: str
+    smtp_use_tls: bool
+    smtp_sender_email: str
+    smtp_sender_name: str
     admin_email: str
     admin_password: str
 
@@ -80,6 +88,14 @@ def get_settings() -> Settings:
             os.getenv("EXPOSE_OTP_IN_RESPONSE"),
             default=environment != "production",
         ),
+        smtp_enabled=_as_bool(os.getenv("SMTP_ENABLED"), default=False),
+        smtp_host=os.getenv("SMTP_HOST", ""),
+        smtp_port=_as_int(os.getenv("SMTP_PORT"), default=587),
+        smtp_username=os.getenv("SMTP_USERNAME", ""),
+        smtp_password=os.getenv("SMTP_PASSWORD", ""),
+        smtp_use_tls=_as_bool(os.getenv("SMTP_USE_TLS"), default=True),
+        smtp_sender_email=os.getenv("SMTP_SENDER_EMAIL", ""),
+        smtp_sender_name=os.getenv("SMTP_SENDER_NAME", "Attica Gold"),
         admin_email=os.getenv("ATTICA_ADMIN_EMAIL", ""),
         admin_password=os.getenv("ATTICA_ADMIN_PASSWORD", ""),
     )

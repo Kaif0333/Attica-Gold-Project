@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.csrf import get_or_create_csrf_token, validate_csrf_token
 from app.audit import log_event
 from app.database import engine, get_db
+from app.emailer import send_otp_email
 from app.login_guard import is_allowed, register_failure, register_success
 from app.migrations import run_migrations
 from app.models import Appointment, AuditLog, User
@@ -104,9 +105,7 @@ def _set_pending_otp(request: Request, action: str, payload: dict) -> str | None
         "otp_hash": hash_reset_token(otp_code),
         "expires_ts": int(datetime.now(timezone.utc).timestamp()) + settings.otp_ttl_seconds,
     }
-    if settings.expose_otp_in_response:
-        return otp_code
-    return None
+    return otp_code
 
 
 def _get_pending_otp(request: Request):
@@ -342,11 +341,37 @@ def login(
         )
 
     register_success(email=email, client_ip=ip)
+    if not settings.smtp_enabled and not settings.expose_otp_in_response:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": "OTP delivery is not configured. Contact support.",
+                "csrf_token": get_or_create_csrf_token(request),
+            },
+            status_code=500,
+        )
     otp_preview = _set_pending_otp(
         request,
         action="login",
         payload={"user_id": user.id, "email": user.email, "role": user.role or "client"},
     )
+    try:
+        pending = _get_pending_otp(request)
+        if pending:
+            send_otp_email(user.email, otp_code=otp_preview or "", purpose="login")
+    except Exception as exc:
+        logger.exception("Failed to send OTP email for login: %s", exc)
+        log_event(db, "LOGIN_OTP_SEND_FAILED", user_id=user.id, user_email=user.email, ip_address=ip)
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": "Could not send OTP email. Please try again later.",
+                "csrf_token": get_or_create_csrf_token(request),
+            },
+            status_code=500,
+        )
     log_event(db, "LOGIN_OTP_ISSUED", user_id=user.id, user_email=user.email, ip_address=ip)
     return templates.TemplateResponse(
         request,
@@ -356,7 +381,7 @@ def login(
             "csrf_token": get_or_create_csrf_token(request),
             "target_email": user.email,
             "action": "login",
-            "otp_preview": otp_preview,
+            "otp_preview": otp_preview if settings.expose_otp_in_response else None,
         },
     )
 
@@ -410,11 +435,37 @@ def register(
         )
 
     hashed_password = hash_password(password)
+    if not settings.smtp_enabled and not settings.expose_otp_in_response:
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {
+                "error": "OTP delivery is not configured. Contact support.",
+                "csrf_token": get_or_create_csrf_token(request),
+            },
+            status_code=500,
+        )
     otp_preview = _set_pending_otp(
         request,
         action="register",
         payload={"email": email, "password_hash": hashed_password},
     )
+    try:
+        pending = _get_pending_otp(request)
+        if pending:
+            send_otp_email(email, otp_code=otp_preview or "", purpose="registration")
+    except Exception as exc:
+        logger.exception("Failed to send OTP email for registration: %s", exc)
+        log_event(db, "REGISTER_OTP_SEND_FAILED", user_email=email, ip_address=client_ip(request))
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {
+                "error": "Could not send OTP email. Please try again later.",
+                "csrf_token": get_or_create_csrf_token(request),
+            },
+            status_code=500,
+        )
     log_event(db, "REGISTER_OTP_ISSUED", user_email=email, ip_address=client_ip(request))
     return templates.TemplateResponse(
         request,
@@ -424,7 +475,7 @@ def register(
             "csrf_token": get_or_create_csrf_token(request),
             "target_email": email,
             "action": "register",
-            "otp_preview": otp_preview,
+            "otp_preview": otp_preview if settings.expose_otp_in_response else None,
         },
     )
 
