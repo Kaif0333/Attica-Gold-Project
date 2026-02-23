@@ -454,6 +454,70 @@ class WebFlowTests(unittest.TestCase):
         self.assertIn("Contact Inquiries", admin_page.text)
         self.assertIn("Kaif Basha", admin_page.text)
 
+    def test_admin_can_manage_inquiry_status_and_assignment(self) -> None:
+        strong_password = "Pass#1234"
+        admin_email = f"admin_manage_{uuid.uuid4().hex[:8]}@example.com"
+        staff_email = f"staff_manage_{uuid.uuid4().hex[:8]}@example.com"
+        lead_email = f"lead_manage_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            admin_user = User(email=admin_email, password=hash_password(strong_password), role="admin")
+            staff_user = User(email=staff_email, password=hash_password(strong_password), role="staff")
+            db.add(admin_user)
+            db.add(staff_user)
+            db.commit()
+        finally:
+            db.close()
+
+        create_inquiry = self.client.post(
+            "/contact/inquiry",
+            data={
+                "name": "Attica Lead",
+                "email": lead_email,
+                "phone": "8880300300",
+                "city": "Hyderabad",
+                "service": "Release Pledged Gold",
+                "message": "Need assistance this week.",
+                "csrf_token": self._csrf_token_from_page("/contact"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create_inquiry.status_code, 303)
+
+        db = SessionLocal()
+        try:
+            inquiry = db.query(Inquiry).filter(Inquiry.email == lead_email).first()
+            self.assertIsNotNone(inquiry)
+            inquiry_id = inquiry.id
+        finally:
+            db.close()
+
+        login_status = self._login_with_otp(admin_email, strong_password)
+        self.assertEqual(login_status, 303)
+        manage = self.client.post(
+            f"/admin/inquiries/{inquiry_id}/manage",
+            data={
+                "status": "contacted",
+                "assigned_to_email": staff_email,
+                "admin_note": "Called customer and scheduled follow-up.",
+                "csrf_token": self._csrf_token_from_page("/admin"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(manage.status_code, 303)
+        self.assertEqual(manage.headers.get("location"), "/admin")
+
+        db = SessionLocal()
+        try:
+            updated = db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
+            self.assertIsNotNone(updated)
+            self.assertEqual(updated.status, "contacted")
+            self.assertEqual(updated.assigned_to_email, staff_email)
+            self.assertEqual(updated.admin_note, "Called customer and scheduled follow-up.")
+        finally:
+            db.close()
+
     def test_dashboard_personalization_for_admin_role(self) -> None:
         strong_password = "Pass#1234"
         admin_email = f"admin_dash_{uuid.uuid4().hex[:8]}@example.com"

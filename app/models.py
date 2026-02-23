@@ -64,4 +64,7 @@ class Inquiry(Base):
     service = Column(String, nullable=True)
     message = Column(String, nullable=False)
     status = Column(String, nullable=False, default="new")
+    assigned_to_email = Column(String, nullable=True)
+    admin_note = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)

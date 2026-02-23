@@ -34,6 +34,7 @@ from app.settings import get_settings
 settings = get_settings()
 logger = configure_logging()
 ALLOWED_ROLES = {"client", "staff", "admin"}
+ALLOWED_INQUIRY_STATUSES = {"new", "contacted", "resolved", "spam"}
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
     "script-src 'self'; "
@@ -365,6 +366,7 @@ def submit_contact_inquiry(
         service=clean_service or None,
         message=clean_message,
         status="new",
+        updated_at=datetime.now(timezone.utc),
     )
     db.add(inquiry)
     db.commit()
@@ -1200,6 +1202,12 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/dashboard", status_code=303)
 
     users = db.query(User).order_by(User.id.desc()).all()
+    staff_users = (
+        db.query(User)
+        .filter(or_(User.role == "staff", User.role == "admin"))
+        .order_by(User.email.asc())
+        .all()
+    )
     appointments = db.query(Appointment).order_by(Appointment.created_at.desc()).all()
     inquiries = db.query(Inquiry).order_by(Inquiry.created_at.desc()).limit(200).all()
     appointment_events = _events_by_appointment(db, limit=1000)
@@ -1210,6 +1218,7 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
         "admin.html",
         {
             "users": users,
+            "staff_users": staff_users,
             "appointments": appointments,
             "inquiries": inquiries,
             "appointment_events": appointment_events,
@@ -1218,6 +1227,73 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "flash": pop_flash(request),
         },
     )
+
+
+@app.post("/admin/inquiries/{inquiry_id}/manage")
+def admin_manage_inquiry(
+    request: Request,
+    inquiry_id: int,
+    status: str = Form(...),
+    assigned_to_email: str = Form(""),
+    admin_note: str = Form(""),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if not has_admin_access(request):
+        set_flash(request, "Admin access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    normalized_status = status.strip().lower()
+    if normalized_status not in ALLOWED_INQUIRY_STATUSES:
+        set_flash(request, "Invalid inquiry status.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    inquiry = db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
+    if not inquiry:
+        set_flash(request, "Inquiry not found.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    normalized_assignee = assigned_to_email.strip().lower()
+    assignee_value = None
+    if normalized_assignee:
+        assignee = (
+            db.query(User)
+            .filter(User.email == normalized_assignee)
+            .filter(or_(User.role == "staff", User.role == "admin"))
+            .first()
+        )
+        if not assignee:
+            set_flash(request, "Assigned user must be a staff/admin account.", "error")
+            return RedirectResponse("/admin", status_code=303)
+        assignee_value = assignee.email
+
+    previous_status = inquiry.status
+    inquiry.status = normalized_status
+    inquiry.assigned_to_email = assignee_value
+    inquiry.admin_note = admin_note.strip() or None
+    inquiry.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    log_event(
+        db,
+        "ADMIN_INQUIRY_UPDATED",
+        user_id=actor_id,
+        user_email=actor_email,
+        ip_address=client_ip(request),
+        details=(
+            f"Inquiry {inquiry.id} updated from {previous_status} to {inquiry.status}; "
+            f"assigned_to={inquiry.assigned_to_email or 'none'}."
+        ),
+    )
+    set_flash(request, "Inquiry updated successfully.", "success")
+    return RedirectResponse("/admin", status_code=303)
 
 
 @app.get("/admin/reports/appointments.csv")

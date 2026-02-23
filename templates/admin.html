@@ -150,6 +150,9 @@
                     <th>Service</th>
                     <th>Message</th>
                     <th>Status</th>
+                    <th>Assigned To</th>
+                    <th>Admin Note</th>
+                    <th>Manage</th>
                 </tr>
             </thead>
             <tbody>
@@ -163,6 +166,27 @@
                     <td>{{ inquiry.service or "-" }}</td>
                     <td>{{ inquiry.message }}</td>
                     <td>{{ inquiry.status }}</td>
+                    <td>{{ inquiry.assigned_to_email or "-" }}</td>
+                    <td>{{ inquiry.admin_note or "-" }}</td>
+                    <td>
+                        <form method="post" action="/admin/inquiries/{{ inquiry.id }}/manage" class="form-grid">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <select name="status">
+                                <option value="new" {% if inquiry.status == "new" %}selected{% endif %}>new</option>
+                                <option value="contacted" {% if inquiry.status == "contacted" %}selected{% endif %}>contacted</option>
+                                <option value="resolved" {% if inquiry.status == "resolved" %}selected{% endif %}>resolved</option>
+                                <option value="spam" {% if inquiry.status == "spam" %}selected{% endif %}>spam</option>
+                            </select>
+                            <select name="assigned_to_email">
+                                <option value="">Unassigned</option>
+                                {% for member in staff_users %}
+                                <option value="{{ member.email }}" {% if inquiry.assigned_to_email == member.email %}selected{% endif %}>{{ member.email }}</option>
+                                {% endfor %}
+                            </select>
+                            <input type="text" name="admin_note" value="{{ inquiry.admin_note or '' }}" placeholder="Add note">
+                            <button class="btn btn-primary" type="submit">Update</button>
+                        </form>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
