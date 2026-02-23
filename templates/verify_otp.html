@@ -1,8 +1,18 @@
 {% extends "base.html" %}
 {% block title %}OTP Verification | Attica Gold{% endblock %}
 {% block content %}
-<section class="auth-shell">
-    <div class="auth-card">
+<section class="auth-shell premium-auth reveal">
+    <aside class="auth-promo interactive-panel" data-tilt>
+        <p class="tag">Security Verification</p>
+        <h2>One more step to protect your account.</h2>
+        <p>Complete OTP verification to continue with secure access to Attica services.</p>
+        <ul class="auth-points">
+            <li>Prevents unauthorized access</li>
+            <li>Links action to your email</li>
+            <li>Improves account protection</li>
+        </ul>
+    </aside>
+    <div class="auth-card premium-card">
         <p class="tag">Attica Gold Security</p>
         <h1>Verify OTP</h1>
         <p>
@@ -29,7 +39,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label for="otp_code">OTP Code</label>
             <input id="otp_code" type="text" name="otp_code" maxlength="6" placeholder="Enter 6-digit OTP" required>
-            <button class="btn btn-primary" type="submit">Verify OTP</button>
+            <button class="btn btn-primary glow-btn" type="submit">Verify OTP</button>
         </form>
 
         <form method="post" action="/resend-otp" class="form-grid" style="margin-top: 10px;">

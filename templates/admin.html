@@ -1,21 +1,35 @@
 {% extends "base.html" %}
 {% block title %}Admin Console | Attica Gold{% endblock %}
 {% block content %}
-<section class="dash-head">
-    <p class="tag">Attica Gold Operations</p>
-    <h1>Admin Console</h1>
-    <p>Global visibility across users and appointments.</p>
-    <div class="form-grid" style="max-width: 420px;">
-        <form method="post" action="/admin/smtp-check">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn btn-primary" type="submit">Send SMTP Test Email</button>
-        </form>
-        <a class="btn" href="/admin/bootstrap-status">View Admin Bootstrap Status</a>
+<section class="dash-head premium-header reveal" data-parallax>
+    <div>
+        <p class="tag">Attica Gold Operations</p>
+        <h1>Admin Console</h1>
+        <p>Global visibility across users and appointments.</p>
+    </div>
+    <div class="header-badges">
+        <span class="header-chip">Users: {{ users|length }}</span>
+        <span class="header-chip">Appointments: {{ appointments|length }}</span>
+        <span class="header-chip">Logs: {{ audit_logs|length }}</span>
     </div>
 </section>
 
 <section class="panel-grid">
-    <article class="panel wide reveal">
+    <article class="panel wide reveal premium-panel">
+        <h3>Control Center</h3>
+        <p class="muted">Run diagnostics, verify bootstrap state, and maintain platform reliability.</p>
+        <div class="admin-actions">
+        <form method="post" action="/admin/smtp-check">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-primary glow-btn" type="submit">Send SMTP Test Email</button>
+        </form>
+        <a class="btn" href="/admin/bootstrap-status">View Admin Bootstrap Status</a>
+        </div>
+    </article>
+</section>
+
+<section class="panel-grid">
+    <article class="panel wide reveal premium-panel">
         <h3>Users</h3>
         <input type="text" placeholder="Search users by email or role" data-filter-target="#users-table">
         {% if users %}
@@ -54,7 +68,7 @@
         {% endif %}
     </article>
 
-    <article class="panel wide reveal">
+    <article class="panel wide reveal premium-panel">
         <h3>All Appointments</h3>
         <input type="text" placeholder="Search appointments" data-filter-target="#admin-appointments-table">
         {% if appointments %}
@@ -83,7 +97,7 @@
         {% endif %}
     </article>
 
-    <article class="panel wide reveal">
+    <article class="panel wide reveal premium-panel">
         <h3>Recent Audit Logs</h3>
         <input type="text" placeholder="Search logs by event, user, or details" data-filter-target="#audit-table">
         {% if audit_logs %}

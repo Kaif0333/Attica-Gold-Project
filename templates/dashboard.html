@@ -1,14 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Dashboard | Attica Gold{% endblock %}
 {% block content %}
-<section class="dash-head">
-    <p class="tag">Attica Gold {{ user_role|title }} Space</p>
-    <h1>{{ user_role|title }} Dashboard</h1>
-    <p>Signed in as {{ user_email }}.</p>
+<section class="dash-head premium-header reveal" data-parallax>
+    <div>
+        <p class="tag">Attica Gold {{ user_role|title }} Space</p>
+        <h1>{{ user_role|title }} Dashboard</h1>
+        <p>Signed in as {{ user_email }}.</p>
+    </div>
+    <div class="header-badges">
+        <span class="header-chip">Secure Session</span>
+        <span class="header-chip">Role: {{ user_role|title }}</span>
+    </div>
 </section>
 
 <section class="panel-grid">
-    <article class="panel reveal">
+    <article class="panel reveal interactive-panel premium-panel" data-tilt>
         <h3>Account Snapshot</h3>
         <p class="muted">Role: <strong>{{ user_role|title }}</strong></p>
         <p class="muted">Your appointments: <strong>{{ role_metrics.total_appointments }}</strong></p>
@@ -16,7 +22,7 @@
     </article>
 
     {% if user_role in ["staff", "admin"] %}
-    <article class="panel reveal">
+    <article class="panel reveal interactive-panel premium-panel" data-tilt>
         <h3>Operations Snapshot</h3>
         <p class="muted">Global appointments: <strong>{{ role_metrics.global_appointments }}</strong></p>
         <p class="muted">Staff accounts: <strong>{{ role_metrics.staff_count }}</strong></p>
@@ -24,19 +30,19 @@
     {% endif %}
 
     {% if user_role == "admin" %}
-    <article class="panel reveal interactive-panel">
+    <article class="panel reveal interactive-panel premium-panel" data-tilt>
         <h3>Admin Quick Actions</h3>
         <p class="muted">Access operational controls and platform governance tools.</p>
-        <a class="btn btn-primary" href="/admin">Open Admin Console</a>
+        <a class="btn btn-primary glow-btn" href="/admin">Open Admin Console</a>
     </article>
-    <article class="panel reveal">
+    <article class="panel reveal interactive-panel premium-panel" data-tilt>
         <h3>Governance Snapshot</h3>
         <p class="muted">Total users: <strong>{{ role_metrics.total_users }}</strong></p>
         <p class="muted">Admin accounts: <strong>{{ role_metrics.admin_count }}</strong></p>
     </article>
     {% endif %}
 
-    <article class="panel reveal interactive-panel">
+    <article class="panel reveal interactive-panel premium-panel" data-tilt>
         <h3>Book Appointment</h3>
         <form method="post" action="/book-appointment" class="form-grid">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -46,11 +52,11 @@
             <label for="time">Time</label>
             <input id="time" type="time" name="time" required>
 
-            <button class="btn btn-primary" type="submit">Book Slot</button>
+            <button class="btn btn-primary glow-btn" type="submit">Book Slot</button>
         </form>
     </article>
 
-    <article class="panel wide reveal">
+    <article class="panel wide reveal premium-panel">
         <h3>Your Appointments</h3>
         <input type="text" placeholder="Search by date, time, or email" data-filter-target="#appointments-table">
         {% if appointments %}

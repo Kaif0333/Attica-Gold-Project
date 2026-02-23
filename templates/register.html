@@ -1,8 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Register | Attica Gold{% endblock %}
 {% block content %}
-<section class="auth-shell">
-    <div class="auth-card">
+<section class="auth-shell premium-auth reveal">
+    <aside class="auth-promo interactive-panel" data-tilt>
+        <p class="tag">Client Onboarding</p>
+        <h2>Create your Attica customer account.</h2>
+        <p>Register once to book branch appointments, track actions, and manage secure service updates.</p>
+        <ul class="auth-points">
+            <li>Quick registration process</li>
+            <li>Protected with OTP verification</li>
+            <li>Built for customer convenience</li>
+        </ul>
+    </aside>
+    <div class="auth-card premium-card">
         <p class="tag">Attica Gold Company</p>
         <h1>Create Account</h1>
         <p>Register to manage appointments and secure financing support.</p>
@@ -19,7 +29,7 @@
             <label for="password">Password</label>
             <input id="password" type="password" name="password" placeholder="Minimum 6 characters" required>
 
-            <button class="btn btn-primary" type="submit">Create Account</button>
+            <button class="btn btn-primary glow-btn" type="submit">Create Account</button>
         </form>
 
         <p class="auth-footer">

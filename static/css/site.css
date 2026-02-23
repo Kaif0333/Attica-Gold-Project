@@ -545,6 +545,49 @@ body {
     min-height: calc(100vh - 180px);
 }
 
+.premium-auth {
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    align-items: stretch;
+}
+
+.auth-promo {
+    background:
+        radial-gradient(circle at 88% 14%, rgba(255, 221, 165, 0.2), transparent 44%),
+        linear-gradient(140deg, #171512 0%, #2b2620 55%, #734f18 100%);
+    color: #f8fafc;
+    border-radius: 18px;
+    padding: 24px;
+    border: 1px solid rgba(255, 226, 175, 0.2);
+    box-shadow: 0 16px 28px rgba(36, 24, 5, 0.28);
+}
+
+.auth-promo h2 {
+    margin: 8px 0 10px;
+    font-family: "Playfair Display", Georgia, serif;
+    line-height: 1.2;
+}
+
+.auth-promo p {
+    color: #ede5d8;
+}
+
+.auth-points {
+    margin: 12px 0 0;
+    padding-left: 20px;
+    display: grid;
+    gap: 6px;
+    color: #f0eadf;
+}
+
+.premium-card {
+    width: min(560px, 100%);
+    background:
+        radial-gradient(circle at 84% 0%, #fff2d8 0%, transparent 42%),
+        linear-gradient(180deg, #ffffff 0%, #fff9ef 100%);
+    border-color: #e8d5b4;
+}
+
 .auth-card {
     width: min(480px, 100%);
     background:
@@ -582,6 +625,43 @@ body {
 
 .dash-head {
     margin-bottom: 18px;
+}
+
+.premium-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    align-items: flex-end;
+    background:
+        radial-gradient(circle at 80% 0%, rgba(255, 226, 176, 0.25), transparent 40%),
+        linear-gradient(140deg, #fff9f0 0%, #ffffff 45%, #fff5e4 100%);
+    border: 1px solid #e9d8b9;
+    border-radius: 18px;
+    padding: 20px;
+    box-shadow: 0 12px 24px rgba(61, 40, 9, 0.08);
+}
+
+.header-badges {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.header-chip {
+    background: #f4e7cf;
+    color: #5e4313;
+    border: 1px solid #e3cca3;
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.admin-actions {
+    margin-top: 10px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 .dash-head h1 {
@@ -683,6 +763,10 @@ input:focus {
     vertical-align: top;
 }
 
+.table tbody tr:hover {
+    background: #fff9ef;
+}
+
 .table th {
     color: #374151;
     font-weight: 700;
@@ -748,6 +832,10 @@ input:focus {
         grid-column: span 12;
     }
 
+    .premium-auth {
+        grid-template-columns: 1fr;
+    }
+
     .hero {
         padding: 32px 20px;
     }
@@ -790,5 +878,10 @@ input:focus {
 
     .coverage-grid {
         grid-template-columns: 1fr;
+    }
+
+    .premium-header {
+        flex-direction: column;
+        align-items: flex-start;
     }
 }
