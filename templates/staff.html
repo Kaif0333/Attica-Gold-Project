@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Staff Console | Attica Gold{% endblock %}
+{% block content %}
+<section class="dash-head premium-header reveal" data-parallax>
+    <div>
+        <p class="tag">Attica Gold Staff Operations</p>
+        <h1>Staff Console</h1>
+        <p>Manage appointments, schedule updates, and support notes.</p>
+    </div>
+    <div class="header-badges">
+        <span class="header-chip">Appointments: {{ appointments|length }}</span>
+        <span class="header-chip">Role Operations</span>
+    </div>
+</section>
+
+<section class="panel-grid">
+    <article class="panel wide reveal premium-panel">
+        <h3>Appointment Operations</h3>
+        <input type="text" placeholder="Search by date, time, or email" data-filter-target="#staff-appointments-table">
+        {% if appointments %}
+        <table class="table" id="staff-appointments-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>User Email</th>
+                    <th>Reschedule</th>
+                    <th>Support Note</th>
+                    <th>Cancel</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for appt in appointments %}
+                <tr>
+                    <td>{{ appt.id }}</td>
+                    <td>{{ appt.date }}</td>
+                    <td>{{ appt.time }}</td>
+                    <td>{{ appt.user_email }}</td>
+                    <td>
+                        <form method="post" action="/staff/appointments/{{ appt.id }}/reschedule" class="form-grid">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="date" name="date" required>
+                            <input type="time" name="time" required>
+                            <button class="btn btn-primary" type="submit">Update</button>
+                        </form>
+                    </td>
+                    <td>
+                        <form method="post" action="/staff/appointments/{{ appt.id }}/note" class="form-grid">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="text" name="note" maxlength="500" placeholder="Add support note" required>
+                            <button class="btn" type="submit">Save Note</button>
+                        </form>
+                    </td>
+                    <td>
+                        <form method="post" action="/staff/appointments/{{ appt.id }}/cancel">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="btn" type="submit">Cancel</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="muted">No appointments found.</p>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}

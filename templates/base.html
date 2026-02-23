@@ -21,6 +21,9 @@
             <a href="/about">About</a>
             {% if request.session.get("user_id") %}
             <a href="/dashboard">Dashboard</a>
+            {% if request.session.get("role") in ["staff", "admin"] %}
+            <a href="/staff">Staff</a>
+            {% endif %}
             {% if request.session.get("role") == "admin" %}
             <a href="/admin">Admin</a>
             {% endif %}

@@ -128,6 +128,10 @@ def client_ip(request: Request) -> str:
     return "unknown"
 
 
+def has_staff_access(request: Request) -> bool:
+    return request.session.get("role") in {"staff", "admin"}
+
+
 def _set_pending_otp(request: Request, action: str, payload: dict) -> str | None:
     now_ts = int(datetime.now(timezone.utc).timestamp())
     otp_code = generate_otp_code()
@@ -672,6 +676,165 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "csrf_token": get_or_create_csrf_token(request),
         },
     )
+
+
+@app.get("/staff", response_class=HTMLResponse)
+def staff_dashboard(request: Request, db: Session = Depends(get_db)):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if not has_staff_access(request):
+        log_event(
+            db,
+            "STAFF_ACCESS_DENIED",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=client_ip(request),
+        )
+        set_flash(request, "Staff access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+
+    appointments = db.query(Appointment).order_by(Appointment.created_at.desc()).all()
+    return templates.TemplateResponse(
+        request,
+        "staff.html",
+        {
+            "appointments": appointments,
+            "csrf_token": get_or_create_csrf_token(request),
+            "flash": pop_flash(request),
+        },
+    )
+
+
+@app.post("/staff/appointments/{appointment_id}/reschedule")
+def staff_reschedule_appointment(
+    request: Request,
+    appointment_id: int,
+    date: str = Form(...),
+    time: str = Form(...),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if not has_staff_access(request):
+        set_flash(request, "Staff access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+        datetime.strptime(time, "%H:%M")
+    except ValueError:
+        set_flash(request, "Invalid date or time format.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appointment:
+        set_flash(request, "Appointment not found.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    old_slot = f"{appointment.date} {appointment.time}"
+    appointment.date = date
+    appointment.time = time
+    db.commit()
+    log_event(
+        db,
+        "STAFF_APPOINTMENT_RESCHEDULED",
+        user_id=actor_id,
+        user_email=actor_email,
+        ip_address=client_ip(request),
+        details=f"Appointment {appointment_id} moved from {old_slot} to {date} {time}.",
+    )
+    set_flash(request, "Appointment rescheduled.", "success")
+    return RedirectResponse("/staff", status_code=303)
+
+
+@app.post("/staff/appointments/{appointment_id}/cancel")
+def staff_cancel_appointment(
+    request: Request,
+    appointment_id: int,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if not has_staff_access(request):
+        set_flash(request, "Staff access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appointment:
+        set_flash(request, "Appointment not found.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    details = f"Cancelled appointment {appointment_id} for {appointment.user_email} on {appointment.date} {appointment.time}."
+    db.delete(appointment)
+    db.commit()
+    log_event(
+        db,
+        "STAFF_APPOINTMENT_CANCELLED",
+        user_id=actor_id,
+        user_email=actor_email,
+        ip_address=client_ip(request),
+        details=details,
+    )
+    set_flash(request, "Appointment cancelled.", "success")
+    return RedirectResponse("/staff", status_code=303)
+
+
+@app.post("/staff/appointments/{appointment_id}/note")
+def staff_add_appointment_note(
+    request: Request,
+    appointment_id: int,
+    note: str = Form(...),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if not has_staff_access(request):
+        set_flash(request, "Staff access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appointment:
+        set_flash(request, "Appointment not found.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    clean_note = note.strip()
+    if not clean_note:
+        set_flash(request, "Support note cannot be empty.", "error")
+        return RedirectResponse("/staff", status_code=303)
+    if len(clean_note) > 500:
+        set_flash(request, "Support note is too long (max 500 chars).", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    log_event(
+        db,
+        "STAFF_APPOINTMENT_NOTE_ADDED",
+        user_id=actor_id,
+        user_email=actor_email,
+        ip_address=client_ip(request),
+        details=f"Appointment {appointment_id} note: {clean_note}",
+    )
+    set_flash(request, "Support note added.", "success")
+    return RedirectResponse("/staff", status_code=303)
 
 
 @app.get("/admin", response_class=HTMLResponse)

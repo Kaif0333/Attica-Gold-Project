@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.login_guard import clear_attempts_for_tests
 from app.main import app
-from app.models import User
+from app.models import Appointment, User
 from app.security import hash_password
 from app.settings import get_settings
 
@@ -416,6 +416,115 @@ class WebFlowTests(unittest.TestCase):
         self.assertIn("Admin Dashboard", dashboard.text)
         self.assertIn("Governance Snapshot", dashboard.text)
         self.assertIn("Open Admin Console", dashboard.text)
+
+    def test_staff_console_access_control(self) -> None:
+        strong_password = "Pass#1234"
+        staff_email = f"staff_{uuid.uuid4().hex[:8]}@example.com"
+        client_email = f"client_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            staff_user = User(email=staff_email, password=hash_password(strong_password), role="staff")
+            client_user = User(email=client_email, password=hash_password(strong_password), role="client")
+            db.add(staff_user)
+            db.add(client_user)
+            db.commit()
+        finally:
+            db.close()
+
+        anonymous = self.client.get("/staff", follow_redirects=False)
+        self.assertEqual(anonymous.status_code, 303)
+        self.assertEqual(anonymous.headers.get("location"), "/login")
+
+        client_login = self._login_with_otp(client_email, strong_password)
+        self.assertEqual(client_login, 303)
+        denied = self.client.get("/staff", follow_redirects=False)
+        self.assertEqual(denied.status_code, 303)
+        self.assertEqual(denied.headers.get("location"), "/dashboard")
+
+        self.client.get("/logout", follow_redirects=False)
+        staff_login = self._login_with_otp(staff_email, strong_password)
+        self.assertEqual(staff_login, 303)
+        staff_page = self.client.get("/staff")
+        self.assertEqual(staff_page.status_code, 200)
+        self.assertIn("Staff Console", staff_page.text)
+
+    def test_staff_can_reschedule_note_and_cancel_appointment(self) -> None:
+        strong_password = "Pass#1234"
+        staff_email = f"staff_ops_{uuid.uuid4().hex[:8]}@example.com"
+        client_email = f"client_ops_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            staff_user = User(email=staff_email, password=hash_password(strong_password), role="staff")
+            client_user = User(email=client_email, password=hash_password(strong_password), role="client")
+            db.add(staff_user)
+            db.add(client_user)
+            db.commit()
+            db.refresh(client_user)
+
+            appointment = Appointment(
+                user_id=client_user.id,
+                user_email=client_email,
+                date="2026-03-10",
+                time="11:00",
+            )
+            db.add(appointment)
+            db.commit()
+            db.refresh(appointment)
+            appointment_id = appointment.id
+        finally:
+            db.close()
+
+        staff_login = self._login_with_otp(staff_email, strong_password)
+        self.assertEqual(staff_login, 303)
+
+        reschedule = self.client.post(
+            f"/staff/appointments/{appointment_id}/reschedule",
+            data={
+                "date": "2026-03-12",
+                "time": "14:30",
+                "csrf_token": self._csrf_token_from_page("/staff"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(reschedule.status_code, 303)
+        self.assertEqual(reschedule.headers.get("location"), "/staff")
+
+        note = self.client.post(
+            f"/staff/appointments/{appointment_id}/note",
+            data={
+                "note": "Customer asked for follow-up call.",
+                "csrf_token": self._csrf_token_from_page("/staff"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(note.status_code, 303)
+        self.assertEqual(note.headers.get("location"), "/staff")
+
+        db = SessionLocal()
+        try:
+            updated = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+            self.assertIsNotNone(updated)
+            self.assertEqual(updated.date, "2026-03-12")
+            self.assertEqual(updated.time, "14:30")
+        finally:
+            db.close()
+
+        cancel = self.client.post(
+            f"/staff/appointments/{appointment_id}/cancel",
+            data={"csrf_token": self._csrf_token_from_page("/staff")},
+            follow_redirects=False,
+        )
+        self.assertEqual(cancel.status_code, 303)
+        self.assertEqual(cancel.headers.get("location"), "/staff")
+
+        db = SessionLocal()
+        try:
+            deleted = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+            self.assertIsNone(deleted)
+        finally:
+            db.close()
 
 
 if __name__ == "__main__":
