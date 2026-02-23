@@ -184,6 +184,13 @@ class WebFlowTests(unittest.TestCase):
         # Tests run in development defaults, so HSTS should not be forced.
         self.assertNotIn("Strict-Transport-Security", response.headers)
 
+    def test_docs_csp_allows_swagger_assets(self) -> None:
+        response = self.client.get("/docs")
+        self.assertEqual(response.status_code, 200)
+        csp = response.headers.get("Content-Security-Policy", "")
+        self.assertIn("https://cdn.jsdelivr.net", csp)
+        self.assertIn("script-src 'self' 'unsafe-inline'", csp)
+
     def test_health_and_readiness_endpoints(self) -> None:
         health = self.client.get("/healthz")
         readiness = self.client.get("/readyz")

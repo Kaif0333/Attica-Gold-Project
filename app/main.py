@@ -45,6 +45,17 @@ CONTENT_SECURITY_POLICY = (
     "base-uri 'self'; "
     "form-action 'self'"
 )
+DOCS_CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com data:; "
+    "img-src 'self' data: https://fastapi.tiangolo.com; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
 
 app = FastAPI(
     title=settings.app_name,
@@ -222,7 +233,10 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
-    response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+    if request.url.path.startswith("/docs") or request.url.path.startswith("/redoc"):
+        response.headers["Content-Security-Policy"] = DOCS_CONTENT_SECURITY_POLICY
+    else:
+        response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
     if settings.environment == "production":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
