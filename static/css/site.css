@@ -359,6 +359,65 @@ body {
     gap: 12px;
 }
 
+.campaign-highlight {
+    margin-top: 16px;
+}
+
+.campaign-card {
+    background:
+        radial-gradient(circle at 95% 10%, rgba(255, 219, 150, 0.26), transparent 36%),
+        linear-gradient(145deg, #fff6e8 0%, #ffffff 45%, #fff1d7 100%);
+    border: 1px solid #e3cca2;
+    border-radius: 16px;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 1.4fr 0.8fr;
+    gap: 14px;
+    box-shadow: 0 14px 28px rgba(68, 44, 9, 0.12);
+}
+
+.campaign-head h3 {
+    margin: 0 0 8px;
+    font-size: clamp(1.35rem, 2.6vw, 1.85rem);
+    font-family: "Playfair Display", Georgia, serif;
+    color: #4b3410;
+}
+
+.lead-small {
+    margin: 0;
+    color: #5e5a52;
+    line-height: 1.5;
+}
+
+.campaign-media {
+    border: 1px solid #edd8b5;
+    border-radius: 14px;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.72);
+    align-self: center;
+}
+
+.campaign-media p {
+    margin: 8px 0 0;
+    color: #59554d;
+    line-height: 1.5;
+}
+
+.campaign-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #faeacb;
+    color: #604414;
+    border: 1px solid #dfc08a;
+    font-size: 0.78rem;
+    letter-spacing: 0.55px;
+    text-transform: uppercase;
+    font-weight: 800;
+}
+
 .stat-card {
     background: linear-gradient(135deg, #fff7e8 0%, #ffffff 100%);
     border: 1px solid #ecdcbf;
@@ -929,6 +988,10 @@ input:focus {
     }
 
     .brand-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .campaign-card {
         grid-template-columns: 1fr;
     }
 
