@@ -797,6 +797,13 @@ input:focus {
     white-space: nowrap;
 }
 
+.staff-bulk-form {
+    margin-bottom: 12px;
+    grid-template-columns: 1fr 1fr 2fr auto;
+    align-items: end;
+    gap: 8px;
+}
+
 .timeline-list {
     display: grid;
     gap: 6px;
@@ -948,5 +955,10 @@ input:focus {
 
     .staff-action-form {
         min-width: 220px;
+    }
+
+    .staff-bulk-form {
+        grid-template-columns: 1fr;
+        align-items: stretch;
     }
 }

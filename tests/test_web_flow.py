@@ -631,6 +631,124 @@ class WebFlowTests(unittest.TestCase):
         finally:
             db.close()
 
+    def test_staff_bulk_actions_complete_and_cancel(self) -> None:
+        strong_password = "Pass#1234"
+        staff_email = f"staff_bulk_{uuid.uuid4().hex[:8]}@example.com"
+        client_email = f"client_bulk_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            staff_user = User(email=staff_email, password=hash_password(strong_password), role="staff")
+            client_user = User(email=client_email, password=hash_password(strong_password), role="client")
+            db.add(staff_user)
+            db.add(client_user)
+            db.commit()
+            db.refresh(client_user)
+
+            appt1 = Appointment(user_id=client_user.id, user_email=client_email, date="2026-04-10", time="10:00", status="scheduled")
+            appt2 = Appointment(user_id=client_user.id, user_email=client_email, date="2026-04-11", time="11:00", status="scheduled")
+            db.add(appt1)
+            db.add(appt2)
+            db.commit()
+            db.refresh(appt1)
+            db.refresh(appt2)
+            appt1_id = appt1.id
+            appt2_id = appt2.id
+        finally:
+            db.close()
+
+        login_status = self._login_with_otp(staff_email, strong_password)
+        self.assertEqual(login_status, 303)
+
+        bulk_complete = self.client.post(
+            "/staff/appointments/bulk",
+            data={
+                "action": "complete",
+                "appointment_ids": str(appt1_id),
+                "csrf_token": self._csrf_token_from_page("/staff"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(bulk_complete.status_code, 303)
+        self.assertEqual(bulk_complete.headers.get("location"), "/staff")
+
+        bulk_cancel = self.client.post(
+            "/staff/appointments/bulk",
+            data={
+                "action": "cancel",
+                "appointment_ids": str(appt2_id),
+                "csrf_token": self._csrf_token_from_page("/staff"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(bulk_cancel.status_code, 303)
+        self.assertEqual(bulk_cancel.headers.get("location"), "/staff")
+
+        db = SessionLocal()
+        try:
+            completed = db.query(Appointment).filter(Appointment.id == appt1_id).first()
+            cancelled = db.query(Appointment).filter(Appointment.id == appt2_id).first()
+            self.assertIsNotNone(completed)
+            self.assertEqual(completed.status, "completed")
+            self.assertIsNone(cancelled)
+        finally:
+            db.close()
+
+    def test_admin_can_complete_and_delete_appointment(self) -> None:
+        strong_password = "Pass#1234"
+        admin_email = f"admin_ops_{uuid.uuid4().hex[:8]}@example.com"
+        client_email = f"client_admin_ops_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            admin_user = User(email=admin_email, password=hash_password(strong_password), role="admin")
+            client_user = User(email=client_email, password=hash_password(strong_password), role="client")
+            db.add(admin_user)
+            db.add(client_user)
+            db.commit()
+            db.refresh(client_user)
+
+            appt1 = Appointment(user_id=client_user.id, user_email=client_email, date="2026-04-15", time="10:00", status="scheduled")
+            appt2 = Appointment(user_id=client_user.id, user_email=client_email, date="2026-04-16", time="11:00", status="scheduled")
+            db.add(appt1)
+            db.add(appt2)
+            db.commit()
+            db.refresh(appt1)
+            db.refresh(appt2)
+            appt1_id = appt1.id
+            appt2_id = appt2.id
+        finally:
+            db.close()
+
+        login_status = self._login_with_otp(admin_email, strong_password)
+        self.assertEqual(login_status, 303)
+
+        complete = self.client.post(
+            f"/admin/appointments/{appt1_id}/complete",
+            data={"csrf_token": self._csrf_token_from_page("/admin")},
+            follow_redirects=False,
+        )
+        self.assertEqual(complete.status_code, 303)
+        self.assertEqual(complete.headers.get("location"), "/admin")
+
+        delete = self.client.post(
+            f"/admin/appointments/{appt2_id}/delete",
+            data={"csrf_token": self._csrf_token_from_page("/admin")},
+            follow_redirects=False,
+        )
+        self.assertEqual(delete.status_code, 303)
+        self.assertEqual(delete.headers.get("location"), "/admin")
+
+        db = SessionLocal()
+        try:
+            completed = db.query(Appointment).filter(Appointment.id == appt1_id).first()
+            deleted = db.query(Appointment).filter(Appointment.id == appt2_id).first()
+            self.assertIsNotNone(completed)
+            self.assertEqual(completed.status, "completed")
+            self.assertIsNone(deleted)
+        finally:
+            db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -145,6 +145,10 @@ def has_staff_access(request: Request) -> bool:
     return request.session.get("role") in {"staff", "admin"}
 
 
+def has_admin_access(request: Request) -> bool:
+    return request.session.get("role") == "admin"
+
+
 def record_appointment_event(
     db: Session,
     appointment_id: int,
@@ -193,6 +197,14 @@ def _normalize_recent_audit_logs(logs: list[AuditLog], limit: int = 100) -> list
         if len(normalized) >= limit:
             break
     return normalized
+
+
+def _bulk_operation_summary(action: str, count: int) -> str:
+    if action == "complete":
+        return f"Marked {count} appointments as completed."
+    if action == "cancel":
+        return f"Cancelled {count} appointments."
+    return f"Processed {count} appointments."
 
 
 def _set_pending_otp(request: Request, action: str, payload: dict) -> str | None:
@@ -982,6 +994,96 @@ def staff_add_appointment_note(
     return RedirectResponse("/staff", status_code=303)
 
 
+@app.post("/staff/appointments/bulk")
+def staff_bulk_appointments_action(
+    request: Request,
+    action: str = Form(...),
+    appointment_ids: str = Form(...),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if not has_staff_access(request):
+        set_flash(request, "Staff access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    normalized_action = action.strip().lower()
+    if normalized_action not in {"complete", "cancel"}:
+        set_flash(request, "Invalid bulk action selected.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    parsed_ids: list[int] = []
+    for part in appointment_ids.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        if not token.isdigit():
+            set_flash(request, "Appointment IDs must be comma-separated numbers.", "error")
+            return RedirectResponse("/staff", status_code=303)
+        parsed_ids.append(int(token))
+
+    if not parsed_ids:
+        set_flash(request, "Provide at least one appointment ID.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    appointments = db.query(Appointment).filter(Appointment.id.in_(parsed_ids)).all()
+    if not appointments:
+        set_flash(request, "No matching appointments found.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    processed = 0
+    for appointment in appointments:
+        if normalized_action == "complete":
+            if appointment.status == "cancelled":
+                continue
+            appointment.status = "completed"
+            appointment.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            log_event(
+                db,
+                "STAFF_APPOINTMENT_COMPLETED",
+                user_id=actor_id,
+                user_email=actor_email,
+                ip_address=client_ip(request),
+                details=f"Completed appointment {appointment.id} for {appointment.user_email}.",
+            )
+            record_appointment_event(
+                db,
+                appointment_id=appointment.id,
+                action="completed",
+                actor_id=actor_id,
+                actor_email=actor_email,
+                actor_role=request.session.get("role"),
+                note=f"Bulk completed for {appointment.user_email}.",
+            )
+            processed += 1
+            continue
+
+        if appointment.status == "completed":
+            continue
+        log_event(
+            db,
+            "STAFF_APPOINTMENT_CANCELLED",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=client_ip(request),
+            details=f"Cancelled appointment {appointment.id} for {appointment.user_email} on {appointment.date} {appointment.time}.",
+        )
+        db.query(AppointmentEvent).filter(AppointmentEvent.appointment_id == appointment.id).delete()
+        db.delete(appointment)
+        db.commit()
+        processed += 1
+
+    set_flash(request, _bulk_operation_summary(normalized_action, processed), "success")
+    return RedirectResponse("/staff", status_code=303)
+
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     user_id = request.session.get("user_id")
@@ -1058,6 +1160,91 @@ def admin_export_appointments_csv(request: Request, db: Session = Depends(get_db
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="appointments_report.csv"'},
     )
+
+
+@app.post("/admin/appointments/{appointment_id}/complete")
+def admin_complete_appointment(
+    request: Request,
+    appointment_id: int,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if not has_admin_access(request):
+        set_flash(request, "Admin access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appointment:
+        set_flash(request, "Appointment not found.", "error")
+        return RedirectResponse("/admin", status_code=303)
+    if appointment.status != "completed":
+        appointment.status = "completed"
+        appointment.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        log_event(
+            db,
+            "ADMIN_APPOINTMENT_COMPLETED",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=client_ip(request),
+            details=f"Completed appointment {appointment.id} for {appointment.user_email}.",
+        )
+        record_appointment_event(
+            db,
+            appointment_id=appointment.id,
+            action="completed",
+            actor_id=actor_id,
+            actor_email=actor_email,
+            actor_role="admin",
+            note="Completed from admin console.",
+        )
+    set_flash(request, "Appointment marked as completed.", "success")
+    return RedirectResponse("/admin", status_code=303)
+
+
+@app.post("/admin/appointments/{appointment_id}/delete")
+def admin_delete_appointment(
+    request: Request,
+    appointment_id: int,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if not has_admin_access(request):
+        set_flash(request, "Admin access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appointment:
+        set_flash(request, "Appointment not found.", "error")
+        return RedirectResponse("/admin", status_code=303)
+    details = f"Deleted appointment {appointment.id} for {appointment.user_email} on {appointment.date} {appointment.time}."
+    log_event(
+        db,
+        "ADMIN_APPOINTMENT_DELETED",
+        user_id=actor_id,
+        user_email=actor_email,
+        ip_address=client_ip(request),
+        details=details,
+    )
+    db.query(AppointmentEvent).filter(AppointmentEvent.appointment_id == appointment.id).delete()
+    db.delete(appointment)
+    db.commit()
+    set_flash(request, "Appointment deleted.", "success")
+    return RedirectResponse("/admin", status_code=303)
 
 
 @app.get("/admin/bootstrap-status")

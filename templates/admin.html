@@ -84,6 +84,7 @@
                     <th>User ID</th>
                     <th>Email</th>
                     <th>Status</th>
+                    <th>Manage</th>
                     <th>Timeline</th>
                 </tr>
             </thead>
@@ -96,6 +97,18 @@
                     <td>{{ appt.user_id }}</td>
                     <td>{{ appt.user_email }}</td>
                     <td>{{ appt.status or "scheduled" }}</td>
+                    <td>
+                        <div class="admin-actions">
+                            <form method="post" action="/admin/appointments/{{ appt.id }}/complete">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button class="btn btn-primary staff-btn" type="submit">Complete</button>
+                            </form>
+                            <form method="post" action="/admin/appointments/{{ appt.id }}/delete">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button class="btn staff-btn" type="submit">Delete</button>
+                            </form>
+                        </div>
+                    </td>
                     <td>
                         {% set events = appointment_events.get(appt.id, []) %}
                         {% if events %}

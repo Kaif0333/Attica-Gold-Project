@@ -17,6 +17,17 @@
 <section class="panel-grid">
     <article class="panel wide premium-panel">
         <h3>Appointment Operations</h3>
+        <form method="post" action="/staff/appointments/bulk" class="form-grid staff-bulk-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="bulk_action">Bulk Action</label>
+            <select id="bulk_action" name="action">
+                <option value="complete">Complete</option>
+                <option value="cancel">Cancel</option>
+            </select>
+            <label for="bulk_ids">Appointment IDs</label>
+            <input id="bulk_ids" type="text" name="appointment_ids" placeholder="e.g. 12, 14, 19" required>
+            <button class="btn btn-primary glow-btn" type="submit">Run Bulk Action</button>
+        </form>
         <input type="text" placeholder="Search by date, time, or email" data-filter-target="#staff-appointments-table">
         {% if appointments %}
         <div class="table-wrap">
