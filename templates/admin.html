@@ -33,7 +33,6 @@
     <article class="panel wide reveal premium-panel">
         <h3>Users</h3>
         <input type="text" placeholder="Search users by email or role" data-filter-target="#users-table">
-        {% if users %}
         <table class="table" id="users-table">
             <thead>
                 <tr>
@@ -44,6 +43,7 @@
                 </tr>
             </thead>
             <tbody>
+                {% if users %}
                 {% for user in users %}
                 <tr>
                     <td>{{ user.id }}</td>
@@ -62,11 +62,13 @@
                     </td>
                 </tr>
                 {% endfor %}
+                {% else %}
+                <tr>
+                    <td colspan="4" class="muted">No users found.</td>
+                </tr>
+                {% endif %}
             </tbody>
         </table>
-        {% else %}
-        <p class="muted">No users found.</p>
-        {% endif %}
     </article>
 
     <article class="panel wide reveal premium-panel">
