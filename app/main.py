@@ -293,6 +293,39 @@ def about_page(request: Request):
     )
 
 
+@app.get("/services", response_class=HTMLResponse)
+def services_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "services.html",
+        {
+            "flash": pop_flash(request),
+        },
+    )
+
+
+@app.get("/branches", response_class=HTMLResponse)
+def branches_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "branches.html",
+        {
+            "flash": pop_flash(request),
+        },
+    )
+
+
+@app.get("/contact", response_class=HTMLResponse)
+def contact_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "contact.html",
+        {
+            "flash": pop_flash(request),
+        },
+    )
+
+
 @app.get("/brand-story", response_class=HTMLResponse)
 def brand_story_page(request: Request):
     return templates.TemplateResponse(
