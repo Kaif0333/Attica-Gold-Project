@@ -599,6 +599,32 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.process-steps-7 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.contact-band {
+    margin-top: 18px;
+}
+
+.contact-card {
+    background: linear-gradient(145deg, #fff7ea 0%, #ffffff 100%);
+    border: 1px solid #e4cfaa;
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 10px 20px rgba(44, 30, 7, 0.1);
+}
+
+.contact-card h4 {
+    margin: 0 0 8px;
+    color: #5f4313;
+}
+
+.contact-card p {
+    margin: 6px 0;
+    color: #5e5a52;
+}
+
 .faq {
     margin-top: 20px;
     background: #fff;
@@ -1057,6 +1083,10 @@ input:focus {
     }
 
     .process-steps {
+        grid-template-columns: 1fr;
+    }
+
+    .process-steps-7 {
         grid-template-columns: 1fr;
     }
 
