@@ -598,6 +598,7 @@ def register(
 def dashboard(request: Request, db: Session = Depends(get_db)):
     user_id = request.session.get("user_id")
     user_email = request.session.get("user")
+    user_role = request.session.get("role", "client")
     if not user_id or not user_email:
         return RedirectResponse("/login", status_code=303)
 
@@ -612,11 +613,35 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         .order_by(Appointment.created_at.desc())
         .all()
     )
+
+    total_appointments = len(appointments)
+    latest_appointment = appointments[0] if appointments else None
+    role_metrics = {
+        "total_appointments": total_appointments,
+        "latest_appointment_label": (
+            f"{latest_appointment.date} at {latest_appointment.time}" if latest_appointment else "None"
+        ),
+    }
+
+    if user_role in {"staff", "admin"}:
+        all_appointments_count = db.query(Appointment).count()
+        staff_count = db.query(User).filter(User.role == "staff").count()
+        role_metrics["global_appointments"] = all_appointments_count
+        role_metrics["staff_count"] = staff_count
+
+    if user_role == "admin":
+        total_users = db.query(User).count()
+        admin_count = db.query(User).filter(User.role == "admin").count()
+        role_metrics["total_users"] = total_users
+        role_metrics["admin_count"] = admin_count
+
     return templates.TemplateResponse(
         request,
         "dashboard.html",
         {
             "user_email": user_email,
+            "user_role": user_role,
+            "role_metrics": role_metrics,
             "appointments": appointments,
             "flash": pop_flash(request),
             "csrf_token": get_or_create_csrf_token(request),

@@ -2,12 +2,40 @@
 {% block title %}Dashboard | Attica Gold{% endblock %}
 {% block content %}
 <section class="dash-head">
-    <p class="tag">Attica Gold Client Space</p>
-    <h1>Client Dashboard</h1>
+    <p class="tag">Attica Gold {{ user_role|title }} Space</p>
+    <h1>{{ user_role|title }} Dashboard</h1>
     <p>Signed in as {{ user_email }}.</p>
 </section>
 
 <section class="panel-grid">
+    <article class="panel reveal">
+        <h3>Account Snapshot</h3>
+        <p class="muted">Role: <strong>{{ user_role|title }}</strong></p>
+        <p class="muted">Your appointments: <strong>{{ role_metrics.total_appointments }}</strong></p>
+        <p class="muted">Latest appointment: <strong>{{ role_metrics.latest_appointment_label }}</strong></p>
+    </article>
+
+    {% if user_role in ["staff", "admin"] %}
+    <article class="panel reveal">
+        <h3>Operations Snapshot</h3>
+        <p class="muted">Global appointments: <strong>{{ role_metrics.global_appointments }}</strong></p>
+        <p class="muted">Staff accounts: <strong>{{ role_metrics.staff_count }}</strong></p>
+    </article>
+    {% endif %}
+
+    {% if user_role == "admin" %}
+    <article class="panel reveal interactive-panel">
+        <h3>Admin Quick Actions</h3>
+        <p class="muted">Access operational controls and platform governance tools.</p>
+        <a class="btn btn-primary" href="/admin">Open Admin Console</a>
+    </article>
+    <article class="panel reveal">
+        <h3>Governance Snapshot</h3>
+        <p class="muted">Total users: <strong>{{ role_metrics.total_users }}</strong></p>
+        <p class="muted">Admin accounts: <strong>{{ role_metrics.admin_count }}</strong></p>
+    </article>
+    {% endif %}
+
     <article class="panel reveal interactive-panel">
         <h3>Book Appointment</h3>
         <form method="post" action="/book-appointment" class="form-grid">

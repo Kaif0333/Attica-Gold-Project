@@ -387,6 +387,27 @@ class WebFlowTests(unittest.TestCase):
         self.assertIn("admin_user_exists", payload)
         self.assertIn("admin_user_role", payload)
 
+    def test_dashboard_personalization_for_admin_role(self) -> None:
+        strong_password = "Pass#1234"
+        admin_email = f"admin_dash_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            admin_user = User(email=admin_email, password=hash_password(strong_password), role="admin")
+            db.add(admin_user)
+            db.commit()
+        finally:
+            db.close()
+
+        login_status = self._login_with_otp(admin_email, strong_password)
+        self.assertEqual(login_status, 303)
+
+        dashboard = self.client.get("/dashboard")
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIn("Admin Dashboard", dashboard.text)
+        self.assertIn("Governance Snapshot", dashboard.text)
+        self.assertIn("Open Admin Console", dashboard.text)
+
 
 if __name__ == "__main__":
     unittest.main()
