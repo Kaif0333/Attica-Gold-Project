@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Staff Console | Attica Gold{% endblock %}
 {% block content %}
-<section class="dash-head premium-header reveal" data-parallax>
+<section class="dash-head premium-header" data-parallax>
     <div>
         <p class="tag">Attica Gold Staff Operations</p>
         <h1>Staff Console</h1>
@@ -14,11 +14,12 @@
 </section>
 
 <section class="panel-grid">
-    <article class="panel wide reveal premium-panel">
+    <article class="panel wide premium-panel">
         <h3>Appointment Operations</h3>
         <input type="text" placeholder="Search by date, time, or email" data-filter-target="#staff-appointments-table">
         {% if appointments %}
-        <table class="table" id="staff-appointments-table">
+        <div class="table-wrap">
+        <table class="table staff-table" id="staff-appointments-table">
             <thead>
                 <tr>
                     <th>ID</th>
@@ -42,30 +43,30 @@
                     <td>{{ appt.user_email }}</td>
                     <td>{{ appt.status or "scheduled" }}</td>
                     <td>
-                        <form method="post" action="/staff/appointments/{{ appt.id }}/reschedule" class="form-grid">
+                        <form method="post" action="/staff/appointments/{{ appt.id }}/reschedule" class="form-grid staff-action-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <input type="date" name="date" required>
-                            <input type="time" name="time" required>
-                            <button class="btn btn-primary" type="submit">Update</button>
+                            <input class="staff-input" type="date" name="date" required>
+                            <input class="staff-input" type="time" name="time" required>
+                            <button class="btn btn-primary staff-btn" type="submit">Update</button>
                         </form>
                     </td>
                     <td>
-                        <form method="post" action="/staff/appointments/{{ appt.id }}/note" class="form-grid">
+                        <form method="post" action="/staff/appointments/{{ appt.id }}/note" class="form-grid staff-action-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <input type="text" name="note" maxlength="500" placeholder="Add support note" required>
-                            <button class="btn" type="submit">Save Note</button>
+                            <input class="staff-input" type="text" name="note" maxlength="500" placeholder="Add support note" required>
+                            <button class="btn staff-btn" type="submit">Save Note</button>
                         </form>
                     </td>
                     <td>
-                        <form method="post" action="/staff/appointments/{{ appt.id }}/complete">
+                        <form method="post" action="/staff/appointments/{{ appt.id }}/complete" class="staff-inline-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button class="btn btn-primary" type="submit">Complete</button>
+                            <button class="btn btn-primary staff-btn" type="submit">Complete</button>
                         </form>
                     </td>
                     <td>
-                        <form method="post" action="/staff/appointments/{{ appt.id }}/cancel">
+                        <form method="post" action="/staff/appointments/{{ appt.id }}/cancel" class="staff-inline-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button class="btn" type="submit">Cancel</button>
+                            <button class="btn staff-btn" type="submit">Cancel</button>
                         </form>
                     </td>
                     <td>
@@ -88,6 +89,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         {% else %}
         <p class="muted">No appointments found.</p>
         {% endif %}

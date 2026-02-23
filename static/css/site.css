@@ -754,6 +754,11 @@ input:focus {
     border-collapse: collapse;
 }
 
+.table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
 .table th,
 .table td {
     border-bottom: 1px solid var(--line);
@@ -765,6 +770,31 @@ input:focus {
 
 .table tbody tr:hover {
     background: #fff9ef;
+}
+
+.staff-table td {
+    min-width: 92px;
+}
+
+.staff-action-form {
+    min-width: 170px;
+}
+
+.staff-input {
+    min-width: 150px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+}
+
+.staff-inline-form {
+    display: inline-block;
+}
+
+.staff-btn {
+    padding: 8px 10px;
+    font-size: 0.82rem;
+    line-height: 1.1;
+    white-space: nowrap;
 }
 
 .timeline-list {
@@ -914,5 +944,9 @@ input:focus {
     .premium-header {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .staff-action-form {
+        min-width: 220px;
     }
 }
