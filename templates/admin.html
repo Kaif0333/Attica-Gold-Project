@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Admin Console | Attica Gold{% endblock %}
 {% block content %}
-<section class="dash-head premium-header reveal" data-parallax>
+<section class="dash-head premium-header" data-parallax>
     <div>
         <p class="tag">Attica Gold Operations</p>
         <h1>Admin Console</h1>
@@ -15,7 +15,7 @@
 </section>
 
 <section class="panel-grid">
-    <article class="panel wide reveal premium-panel">
+    <article class="panel wide premium-panel">
         <h3>Control Center</h3>
         <p class="muted">Run diagnostics, verify bootstrap state, and maintain platform reliability.</p>
         <div class="admin-actions">
@@ -30,7 +30,7 @@
 </section>
 
 <section class="panel-grid">
-    <article class="panel wide reveal premium-panel">
+    <article class="panel wide premium-panel">
         <h3>Users</h3>
         <input type="text" placeholder="Search users by email or role" data-filter-target="#users-table">
         <table class="table" id="users-table">
@@ -71,7 +71,7 @@
         </table>
     </article>
 
-    <article class="panel wide reveal premium-panel">
+    <article class="panel wide premium-panel">
         <h3>All Appointments</h3>
         <input type="text" placeholder="Search appointments" data-filter-target="#admin-appointments-table">
         {% if appointments %}
@@ -121,7 +121,7 @@
         {% endif %}
     </article>
 
-    <article class="panel wide reveal premium-panel">
+    <article class="panel wide premium-panel">
         <h3>Recent Audit Logs</h3>
         <input type="text" placeholder="Search logs by event, user, or details" data-filter-target="#audit-table">
         {% if audit_logs %}
