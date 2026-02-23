@@ -83,6 +83,26 @@ def ensure_admin_user() -> None:
         )
 
 
+def validate_runtime_configuration() -> None:
+    if not settings.smtp_enabled:
+        return
+
+    missing = []
+    if not settings.smtp_host:
+        missing.append("SMTP_HOST")
+    if not settings.smtp_sender_email:
+        missing.append("SMTP_SENDER_EMAIL")
+    if not settings.smtp_username:
+        missing.append("SMTP_USERNAME")
+    if not settings.smtp_password:
+        missing.append("SMTP_PASSWORD")
+
+    if missing:
+        raise RuntimeError(
+            "SMTP_ENABLED=1 but required SMTP settings are missing: " + ", ".join(missing)
+        )
+
+
 def set_flash(request: Request, message: str, category: str = "info") -> None:
     request.session["flash"] = {"message": message, "category": category}
 
@@ -98,12 +118,15 @@ def client_ip(request: Request) -> str:
 
 
 def _set_pending_otp(request: Request, action: str, payload: dict) -> str | None:
+    now_ts = int(datetime.now(timezone.utc).timestamp())
     otp_code = generate_otp_code()
     request.session["pending_otp"] = {
         "action": action,
         "payload": payload,
         "otp_hash": hash_reset_token(otp_code),
-        "expires_ts": int(datetime.now(timezone.utc).timestamp()) + settings.otp_ttl_seconds,
+        "expires_ts": now_ts + settings.otp_ttl_seconds,
+        "resend_count": 0,
+        "resend_available_ts": now_ts + settings.otp_resend_cooldown_seconds,
     }
     return otp_code
 
@@ -118,6 +141,7 @@ def _clear_pending_otp(request: Request) -> None:
 
 if settings.auto_run_migrations:
     run_migrations()
+validate_runtime_configuration()
 ensure_admin_user()
 
 
@@ -286,6 +310,96 @@ def verify_otp(
     _clear_pending_otp(request)
     set_flash(request, "Unknown OTP action.", "error")
     return RedirectResponse("/login", status_code=303)
+
+
+@app.post("/resend-otp")
+def resend_otp(
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    pending = _get_pending_otp(request)
+    if not pending:
+        set_flash(request, "No OTP challenge in progress.", "error")
+        return RedirectResponse("/login", status_code=303)
+
+    if not validate_csrf_token(request, csrf_token):
+        return templates.TemplateResponse(
+            request,
+            "verify_otp.html",
+            {
+                "error": "Invalid security token. Please refresh and try again.",
+                "csrf_token": get_or_create_csrf_token(request),
+                "target_email": pending.get("payload", {}).get("email", ""),
+                "action": pending.get("action", "login"),
+            },
+            status_code=403,
+        )
+
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    if now_ts > int(pending.get("expires_ts", 0)):
+        _clear_pending_otp(request)
+        set_flash(request, "OTP expired. Please try again.", "error")
+        return RedirectResponse("/login", status_code=303)
+
+    resend_count = int(pending.get("resend_count", 0))
+    if resend_count >= settings.otp_max_resends:
+        _clear_pending_otp(request)
+        set_flash(request, "Maximum OTP resend attempts reached. Start again.", "error")
+        return RedirectResponse("/login", status_code=303)
+
+    resend_available_ts = int(pending.get("resend_available_ts", 0))
+    if now_ts < resend_available_ts:
+        wait_seconds = resend_available_ts - now_ts
+        return templates.TemplateResponse(
+            request,
+            "verify_otp.html",
+            {
+                "error": f"Please wait {wait_seconds} seconds before requesting another OTP.",
+                "csrf_token": get_or_create_csrf_token(request),
+                "target_email": pending.get("payload", {}).get("email", ""),
+                "action": pending.get("action", "login"),
+            },
+            status_code=429,
+        )
+
+    otp_code = generate_otp_code()
+    pending["otp_hash"] = hash_reset_token(otp_code)
+    pending["expires_ts"] = now_ts + settings.otp_ttl_seconds
+    pending["resend_count"] = resend_count + 1
+    pending["resend_available_ts"] = now_ts + settings.otp_resend_cooldown_seconds
+    request.session["pending_otp"] = pending
+
+    target_email = pending.get("payload", {}).get("email", "")
+    action = pending.get("action", "login")
+    try:
+        if settings.smtp_enabled:
+            send_otp_email(target_email, otp_code=otp_code, purpose=action)
+    except Exception as exc:
+        logger.exception("Failed to resend OTP email: %s", exc)
+        return templates.TemplateResponse(
+            request,
+            "verify_otp.html",
+            {
+                "error": "Could not resend OTP email. Please try again later.",
+                "csrf_token": get_or_create_csrf_token(request),
+                "target_email": target_email,
+                "action": action,
+            },
+            status_code=500,
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "verify_otp.html",
+        {
+            "message": "A new OTP has been sent.",
+            "csrf_token": get_or_create_csrf_token(request),
+            "target_email": target_email,
+            "action": action,
+            "otp_preview": otp_code if settings.expose_otp_in_response else None,
+        },
+    )
 
 
 @app.post("/login")

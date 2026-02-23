@@ -59,6 +59,8 @@ class Settings:
     expose_reset_token_in_response: bool
     otp_ttl_seconds: int
     expose_otp_in_response: bool
+    otp_resend_cooldown_seconds: int
+    otp_max_resends: int
     smtp_enabled: bool
     smtp_host: str
     smtp_port: int
@@ -108,6 +110,11 @@ def get_settings() -> Settings:
             os.getenv("EXPOSE_OTP_IN_RESPONSE"),
             default=environment != "production",
         ),
+        otp_resend_cooldown_seconds=_as_int(
+            os.getenv("OTP_RESEND_COOLDOWN_SECONDS"),
+            default=45,
+        ),
+        otp_max_resends=_as_int(os.getenv("OTP_MAX_RESENDS"), default=3),
         smtp_enabled=_as_bool(os.getenv("SMTP_ENABLED"), default=False),
         smtp_host=os.getenv("SMTP_HOST", ""),
         smtp_port=_as_int(os.getenv("SMTP_PORT"), default=587),

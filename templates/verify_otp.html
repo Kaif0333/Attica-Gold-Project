@@ -31,6 +31,11 @@
             <input id="otp_code" type="text" name="otp_code" maxlength="6" placeholder="Enter 6-digit OTP" required>
             <button class="btn btn-primary" type="submit">Verify OTP</button>
         </form>
+
+        <form method="post" action="/resend-otp" class="form-grid" style="margin-top: 10px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn" type="submit">Resend OTP</button>
+        </form>
     </div>
 </section>
 {% endblock %}
