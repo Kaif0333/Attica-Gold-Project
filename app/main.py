@@ -14,7 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.csrf import get_or_create_csrf_token, validate_csrf_token
 from app.audit import log_event
 from app.database import engine, get_db
-from app.emailer import send_otp_email
+from app.emailer import send_inquiry_assignment_email, send_inquiry_created_email, send_otp_email
 from app.login_guard import is_allowed, register_failure, register_success
 from app.migrations import run_migrations
 from app.models import Appointment, AppointmentEvent, AuditLog, Inquiry, User
@@ -230,6 +230,25 @@ def _clear_pending_otp(request: Request) -> None:
     request.session.pop("pending_otp", None)
 
 
+def _inquiry_alert_recipients() -> list[str]:
+    recipients: list[str] = []
+    if settings.admin_email:
+        recipients.append(settings.admin_email.strip().lower())
+    if settings.inquiry_alert_emails:
+        for token in settings.inquiry_alert_emails.split(","):
+            email = token.strip().lower()
+            if email:
+                recipients.append(email)
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for email in recipients:
+        if email in seen:
+            continue
+        deduped.append(email)
+        seen.add(email)
+    return deduped
+
+
 if settings.auto_run_migrations:
     run_migrations()
 validate_runtime_configuration()
@@ -370,6 +389,7 @@ def submit_contact_inquiry(
     )
     db.add(inquiry)
     db.commit()
+    db.refresh(inquiry)
 
     log_event(
         db,
@@ -379,6 +399,30 @@ def submit_contact_inquiry(
         ip_address=client_ip(request),
         details=f"Inquiry from {clean_name} ({clean_email}) for service: {clean_service or 'general'}.",
     )
+    recipients = _inquiry_alert_recipients()
+    if settings.smtp_enabled and recipients:
+        for recipient in recipients:
+            try:
+                send_inquiry_created_email(
+                    recipient,
+                    inquiry_id=inquiry.id,
+                    name=inquiry.name,
+                    email=inquiry.email,
+                    phone=inquiry.phone,
+                    city=inquiry.city,
+                    service=inquiry.service,
+                    message=inquiry.message,
+                )
+            except Exception as exc:
+                logger.exception("Failed to send inquiry-created email to %s: %s", recipient, exc)
+                log_event(
+                    db,
+                    "CONTACT_INQUIRY_NOTIFY_FAILED",
+                    user_id=request.session.get("user_id"),
+                    user_email=request.session.get("user") or clean_email,
+                    ip_address=client_ip(request),
+                    details=f"Notification failure to {recipient}: {exc}",
+                )
     set_flash(request, "Inquiry submitted. Our team will contact you shortly.", "success")
     return RedirectResponse("/contact", status_code=303)
 
@@ -1342,6 +1386,7 @@ def admin_manage_inquiry(
         assignee_value = assignee.email
 
     previous_status = inquiry.status
+    previous_assigned_to = inquiry.assigned_to_email
     inquiry.status = normalized_status
     inquiry.assigned_to_email = assignee_value
     inquiry.admin_note = admin_note.strip() or None
@@ -1359,6 +1404,31 @@ def admin_manage_inquiry(
             f"assigned_to={inquiry.assigned_to_email or 'none'}."
         ),
     )
+    if settings.smtp_enabled and inquiry.assigned_to_email and inquiry.assigned_to_email != previous_assigned_to:
+        try:
+            send_inquiry_assignment_email(
+                inquiry.assigned_to_email,
+                inquiry_id=inquiry.id,
+                name=inquiry.name,
+                email=inquiry.email,
+                city=inquiry.city,
+                service=inquiry.service,
+                note=inquiry.admin_note,
+            )
+        except Exception as exc:
+            logger.exception(
+                "Failed to send inquiry-assignment email to %s: %s",
+                inquiry.assigned_to_email,
+                exc,
+            )
+            log_event(
+                db,
+                "INQUIRY_ASSIGN_NOTIFY_FAILED",
+                user_id=actor_id,
+                user_email=actor_email,
+                ip_address=client_ip(request),
+                details=f"Assignment notification failure to {inquiry.assigned_to_email}: {exc}",
+            )
     set_flash(request, "Inquiry updated successfully.", "success")
     return RedirectResponse("/admin", status_code=303)
 

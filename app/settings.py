@@ -69,6 +69,7 @@ class Settings:
     smtp_use_tls: bool
     smtp_sender_email: str
     smtp_sender_name: str
+    inquiry_alert_emails: str
     admin_email: str
     admin_password: str
 
@@ -128,6 +129,7 @@ def get_settings() -> Settings:
         smtp_use_tls=_as_bool(os.getenv("SMTP_USE_TLS"), default=True),
         smtp_sender_email=os.getenv("SMTP_SENDER_EMAIL", ""),
         smtp_sender_name=os.getenv("SMTP_SENDER_NAME", "Attica Gold"),
+        inquiry_alert_emails=os.getenv("INQUIRY_ALERT_EMAILS", ""),
         admin_email=os.getenv("ATTICA_ADMIN_EMAIL", ""),
         admin_password=os.getenv("ATTICA_ADMIN_PASSWORD", ""),
     )
