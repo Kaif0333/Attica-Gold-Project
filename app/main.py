@@ -877,6 +877,13 @@ def staff_dashboard(request: Request, db: Session = Depends(get_db)):
     all_appointments = db.query(Appointment).order_by(Appointment.created_at.desc()).all()
     active_appointments = [appt for appt in all_appointments if appt.status != "completed"]
     completed_appointments = [appt for appt in all_appointments if appt.status == "completed"]
+    assigned_inquiries = (
+        db.query(Inquiry)
+        .filter(Inquiry.assigned_to_email == actor_email)
+        .order_by(Inquiry.updated_at.desc(), Inquiry.created_at.desc())
+        .limit(200)
+        .all()
+    )
     appointment_events = _events_by_appointment(db, limit=1000)
     return templates.TemplateResponse(
         request,
@@ -884,6 +891,7 @@ def staff_dashboard(request: Request, db: Session = Depends(get_db)):
         {
             "appointments": active_appointments,
             "completed_appointments": completed_appointments,
+            "assigned_inquiries": assigned_inquiries,
             "appointment_events": appointment_events,
             "csrf_token": get_or_create_csrf_token(request),
             "flash": pop_flash(request),
@@ -1182,6 +1190,65 @@ def staff_bulk_appointments_action(
         processed += 1
 
     set_flash(request, _bulk_operation_summary(normalized_action, processed), "success")
+    return RedirectResponse("/staff", status_code=303)
+
+
+@app.post("/staff/inquiries/{inquiry_id}/update")
+def staff_update_inquiry(
+    request: Request,
+    inquiry_id: int,
+    status: str = Form(...),
+    note: str = Form(""),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if not has_staff_access(request):
+        set_flash(request, "Staff access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    inquiry = db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
+    if not inquiry:
+        set_flash(request, "Inquiry not found.", "error")
+        return RedirectResponse("/staff", status_code=303)
+    if inquiry.assigned_to_email != actor_email:
+        set_flash(request, "You can only manage inquiries assigned to your account.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    normalized_status = status.strip().lower()
+    if normalized_status not in {"contacted", "resolved", "spam"}:
+        set_flash(request, "Invalid inquiry status for staff action.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    clean_note = note.strip()
+    if len(clean_note) > 500:
+        set_flash(request, "Note is too long (max 500 chars).", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    previous_status = inquiry.status
+    inquiry.status = normalized_status
+    inquiry.admin_note = clean_note or inquiry.admin_note
+    inquiry.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    log_event(
+        db,
+        "STAFF_INQUIRY_UPDATED",
+        user_id=actor_id,
+        user_email=actor_email,
+        ip_address=client_ip(request),
+        details=(
+            f"Inquiry {inquiry.id} updated from {previous_status} to {inquiry.status}; "
+            f"assigned_to={inquiry.assigned_to_email or 'none'}."
+        ),
+    )
+    set_flash(request, "Inquiry updated successfully.", "success")
     return RedirectResponse("/staff", status_code=303)
 
 

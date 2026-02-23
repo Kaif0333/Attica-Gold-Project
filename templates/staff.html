@@ -10,6 +10,7 @@
     <div class="header-badges">
         <span class="header-chip">Active: {{ appointments|length }}</span>
         <span class="header-chip">Completed: {{ completed_appointments|length }}</span>
+        <span class="header-chip">My Inquiries: {{ assigned_inquiries|length }}</span>
         <span class="header-chip">Role Operations</span>
     </div>
 </section>
@@ -104,6 +105,60 @@
         </div>
         {% else %}
         <p class="muted">No appointments found.</p>
+        {% endif %}
+    </article>
+</section>
+
+<section class="panel-grid">
+    <article class="panel wide premium-panel">
+        <h3>My Assigned Inquiries</h3>
+        <input type="text" placeholder="Search inquiries by name, email, city, or service" data-filter-target="#staff-inquiries-table">
+        {% if assigned_inquiries %}
+        <div class="table-wrap">
+        <table class="table staff-table" id="staff-inquiries-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>City</th>
+                    <th>Service</th>
+                    <th>Status</th>
+                    <th>Note</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for inquiry in assigned_inquiries %}
+                <tr>
+                    <td>{{ inquiry.id }}</td>
+                    <td>{{ inquiry.name }}</td>
+                    <td>{{ inquiry.email }}</td>
+                    <td>{{ inquiry.phone or "-" }}</td>
+                    <td>{{ inquiry.city or "-" }}</td>
+                    <td>{{ inquiry.service or "-" }}</td>
+                    <td>{{ inquiry.status }}</td>
+                    <td>{{ inquiry.admin_note or "-" }}</td>
+                    <td>
+                        <form method="post" action="/staff/inquiries/{{ inquiry.id }}/update" class="form-grid staff-action-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <select name="status">
+                                <option value="contacted" {% if inquiry.status == "contacted" %}selected{% endif %}>contacted</option>
+                                <option value="resolved" {% if inquiry.status == "resolved" %}selected{% endif %}>resolved</option>
+                                <option value="spam" {% if inquiry.status == "spam" %}selected{% endif %}>spam</option>
+                            </select>
+                            <input class="staff-input" type="text" name="note" maxlength="500" placeholder="Add note">
+                            <button class="btn btn-primary staff-btn" type="submit">Update</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="muted">No inquiries assigned to your account yet.</p>
         {% endif %}
     </article>
 </section>

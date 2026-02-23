@@ -571,6 +571,164 @@ class WebFlowTests(unittest.TestCase):
         self.assertEqual(staff_page.status_code, 200)
         self.assertIn("Staff Console", staff_page.text)
 
+    def test_staff_can_update_assigned_inquiry(self) -> None:
+        strong_password = "Pass#1234"
+        admin_email = f"admin_staff_inq_{uuid.uuid4().hex[:8]}@example.com"
+        staff_email = f"staff_assignee_{uuid.uuid4().hex[:8]}@example.com"
+        lead_email = f"lead_assigned_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            admin_user = User(email=admin_email, password=hash_password(strong_password), role="admin")
+            staff_user = User(email=staff_email, password=hash_password(strong_password), role="staff")
+            db.add(admin_user)
+            db.add(staff_user)
+            db.commit()
+        finally:
+            db.close()
+
+        create_inquiry = self.client.post(
+            "/contact/inquiry",
+            data={
+                "name": "Assigned Lead",
+                "email": lead_email,
+                "phone": "9000000000",
+                "city": "Chennai",
+                "service": "Sell Gold",
+                "message": "Please call tomorrow.",
+                "csrf_token": self._csrf_token_from_page("/contact"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create_inquiry.status_code, 303)
+
+        db = SessionLocal()
+        try:
+            inquiry = db.query(Inquiry).filter(Inquiry.email == lead_email).first()
+            self.assertIsNotNone(inquiry)
+            inquiry_id = inquiry.id
+        finally:
+            db.close()
+
+        admin_login = self._login_with_otp(admin_email, strong_password)
+        self.assertEqual(admin_login, 303)
+        assign = self.client.post(
+            f"/admin/inquiries/{inquiry_id}/manage",
+            data={
+                "status": "new",
+                "assigned_to_email": staff_email,
+                "admin_note": "Assigned to staff queue.",
+                "csrf_token": self._csrf_token_from_page("/admin"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(assign.status_code, 303)
+        self.client.get("/logout", follow_redirects=False)
+
+        staff_login = self._login_with_otp(staff_email, strong_password)
+        self.assertEqual(staff_login, 303)
+        update = self.client.post(
+            f"/staff/inquiries/{inquiry_id}/update",
+            data={
+                "status": "resolved",
+                "note": "Customer visited branch and completed process.",
+                "csrf_token": self._csrf_token_from_page("/staff"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(update.status_code, 303)
+        self.assertEqual(update.headers.get("location"), "/staff")
+
+        db = SessionLocal()
+        try:
+            refreshed = db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
+            self.assertIsNotNone(refreshed)
+            self.assertEqual(refreshed.status, "resolved")
+            self.assertEqual(refreshed.assigned_to_email, staff_email)
+            self.assertEqual(refreshed.admin_note, "Customer visited branch and completed process.")
+        finally:
+            db.close()
+
+    def test_staff_cannot_update_unassigned_inquiry(self) -> None:
+        strong_password = "Pass#1234"
+        admin_email = f"admin_unassigned_{uuid.uuid4().hex[:8]}@example.com"
+        staff_one_email = f"staff_one_{uuid.uuid4().hex[:8]}@example.com"
+        staff_two_email = f"staff_two_{uuid.uuid4().hex[:8]}@example.com"
+        lead_email = f"lead_other_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            admin_user = User(email=admin_email, password=hash_password(strong_password), role="admin")
+            staff_one = User(email=staff_one_email, password=hash_password(strong_password), role="staff")
+            staff_two = User(email=staff_two_email, password=hash_password(strong_password), role="staff")
+            db.add(admin_user)
+            db.add(staff_one)
+            db.add(staff_two)
+            db.commit()
+        finally:
+            db.close()
+
+        create_inquiry = self.client.post(
+            "/contact/inquiry",
+            data={
+                "name": "Protected Lead",
+                "email": lead_email,
+                "phone": "8111111111",
+                "city": "Bangalore",
+                "service": "Release Pledged Gold",
+                "message": "Need call back.",
+                "csrf_token": self._csrf_token_from_page("/contact"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create_inquiry.status_code, 303)
+
+        db = SessionLocal()
+        try:
+            inquiry = db.query(Inquiry).filter(Inquiry.email == lead_email).first()
+            self.assertIsNotNone(inquiry)
+            inquiry_id = inquiry.id
+        finally:
+            db.close()
+
+        admin_login = self._login_with_otp(admin_email, strong_password)
+        self.assertEqual(admin_login, 303)
+        assign = self.client.post(
+            f"/admin/inquiries/{inquiry_id}/manage",
+            data={
+                "status": "contacted",
+                "assigned_to_email": staff_one_email,
+                "admin_note": "Assigned to staff one.",
+                "csrf_token": self._csrf_token_from_page("/admin"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(assign.status_code, 303)
+        self.client.get("/logout", follow_redirects=False)
+
+        staff_two_login = self._login_with_otp(staff_two_email, strong_password)
+        self.assertEqual(staff_two_login, 303)
+        blocked_update = self.client.post(
+            f"/staff/inquiries/{inquiry_id}/update",
+            data={
+                "status": "resolved",
+                "note": "Trying unauthorized close.",
+                "csrf_token": self._csrf_token_from_page("/staff"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(blocked_update.status_code, 303)
+        self.assertEqual(blocked_update.headers.get("location"), "/staff")
+
+        db = SessionLocal()
+        try:
+            unchanged = db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
+            self.assertIsNotNone(unchanged)
+            self.assertEqual(unchanged.status, "contacted")
+            self.assertEqual(unchanged.assigned_to_email, staff_one_email)
+        finally:
+            db.close()
+
     def test_staff_can_reschedule_note_and_cancel_appointment(self) -> None:
         strong_password = "Pass#1234"
         staff_email = f"staff_ops_{uuid.uuid4().hex[:8]}@example.com"
