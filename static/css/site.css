@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap");
+
 :root {
     --ink: #151311;
     --muted: #66615a;
@@ -21,7 +23,7 @@
 body {
     margin: 0;
     color: var(--ink);
-    font-family: "Trebuchet MS", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    font-family: "Outfit", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
     background:
         radial-gradient(circle at 2% 0%, #fff5db 0%, transparent 34%),
         radial-gradient(circle at 90% 8%, #fff0ce 0%, transparent 27%),
@@ -38,9 +40,10 @@ body {
     justify-content: space-between;
     align-items: center;
     padding: 12px 24px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    background: linear-gradient(110deg, #1a1917 0%, #2a2824 65%, #654814 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+    background: linear-gradient(110deg, #13110f 0%, #28231c 54%, #7a5720 100%);
     backdrop-filter: blur(6px);
+    box-shadow: 0 10px 24px rgba(15, 12, 8, 0.35);
 }
 
 .brand {
@@ -71,6 +74,7 @@ body {
 .brand-copy strong {
     font-size: 1rem;
     letter-spacing: 0.25px;
+    font-family: "Playfair Display", Georgia, serif;
 }
 
 .brand-copy small {
@@ -90,10 +94,14 @@ body {
     text-decoration: none;
     font-weight: 600;
     font-size: 0.95rem;
+    padding: 6px 0;
+    border-bottom: 2px solid transparent;
+    transition: color 0.25s ease, border-color 0.25s ease;
 }
 
 .nav a:hover {
     color: #ffd88a;
+    border-color: rgba(255, 216, 138, 0.7);
 }
 
 .page {
@@ -112,11 +120,82 @@ body {
     border: 1px solid rgba(255, 224, 166, 0.2);
 }
 
+.hero-premium {
+    display: grid;
+    grid-template-columns: 1.5fr 0.9fr;
+    gap: 18px;
+    overflow: hidden;
+    position: relative;
+}
+
+.hero-premium::after {
+    content: "";
+    position: absolute;
+    width: 420px;
+    height: 420px;
+    right: -140px;
+    top: -160px;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, rgba(255, 217, 145, 0.18), transparent 70%);
+    pointer-events: none;
+}
+
+.hero-main {
+    position: relative;
+    z-index: 1;
+}
+
+.hero-panel {
+    position: relative;
+    z-index: 1;
+    align-self: end;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 12px 28px rgba(13, 10, 7, 0.3);
+}
+
+.hero-panel h3 {
+    margin: 0 0 8px;
+    color: #f6ebd8;
+}
+
+.pulse-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.pulse-list li {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.14);
+    padding-bottom: 6px;
+    color: #f0ede7;
+    font-size: 0.9rem;
+}
+
+.pulse-list li:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+
+.pulse-list strong {
+    color: #ffd88a;
+}
+
 .hero h1 {
     margin: 0 0 14px;
     font-size: clamp(1.8rem, 4vw, 3rem);
     line-height: 1.1;
     max-width: 900px;
+    font-family: "Playfair Display", Georgia, serif;
+    letter-spacing: 0.25px;
 }
 
 .tag {
@@ -170,6 +249,44 @@ body {
     border-radius: 999px;
 }
 
+.ticker-wrap {
+    margin-top: 14px;
+    border: 1px solid #e4d4b7;
+    background: linear-gradient(120deg, #fff6e8 0%, #fffdf8 100%);
+    border-radius: 12px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.ticker-track {
+    display: inline-flex;
+    gap: 24px;
+    padding: 10px 16px;
+    animation: tickerScroll 22s linear infinite;
+}
+
+.ticker-track span {
+    position: relative;
+    color: #6e4e18;
+    font-weight: 600;
+    font-size: 0.92rem;
+}
+
+.ticker-track span::before {
+    content: "•";
+    margin-right: 8px;
+    color: #a0762b;
+}
+
+@keyframes tickerScroll {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(-50%);
+    }
+}
+
 .panel-grid {
     margin-top: 22px;
     display: grid;
@@ -188,6 +305,8 @@ body {
 
 .interactive-panel {
     transition: transform 0.25s ease, box-shadow 0.25s ease;
+    transform-style: preserve-3d;
+    will-change: transform;
 }
 
 .interactive-panel:hover {
@@ -202,6 +321,11 @@ body {
 .panel h3 {
     margin: 0 0 10px;
     font-size: 1.1rem;
+}
+
+.premium-panel {
+    background: linear-gradient(145deg, #ffffff 0%, #fff7ea 100%);
+    border-color: #ead6b5;
 }
 
 .brand-band {
@@ -516,6 +640,12 @@ input:focus {
     justify-content: center;
 }
 
+.btn:not(.btn-primary):not(.btn-outline) {
+    background: #f6ead6;
+    color: #4f3912;
+    border: 1px solid #e1cda7;
+}
+
 .btn-primary {
     background: linear-gradient(120deg, #8b661e, #cb9e4c);
     color: #fff;
@@ -523,6 +653,14 @@ input:focus {
 
 .btn-primary:hover {
     filter: brightness(1.08);
+}
+
+.glow-btn {
+    box-shadow: 0 8px 22px rgba(203, 158, 76, 0.42);
+}
+
+.glow-btn:hover {
+    box-shadow: 0 12px 26px rgba(203, 158, 76, 0.5);
 }
 
 .btn-outline {
@@ -595,6 +733,12 @@ input:focus {
     text-align: center;
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .ticker-track {
+        animation: none;
+    }
+}
+
 @media (max-width: 900px) {
     .panel {
         grid-column: span 12;
@@ -606,6 +750,10 @@ input:focus {
 
     .hero {
         padding: 32px 20px;
+    }
+
+    .hero-premium {
+        grid-template-columns: 1fr;
     }
 
     .topbar {
