@@ -55,8 +55,20 @@ function setupTableFilters() {
   });
 }
 
+function setupFaqAccordion() {
+  const items = document.querySelectorAll("[data-accordion]");
+  items.forEach((item) => {
+    const trigger = item.querySelector("[data-accordion-trigger]");
+    if (!trigger) return;
+    trigger.addEventListener("click", () => {
+      item.classList.toggle("open");
+    });
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   setupRevealAnimations();
   setupCountUp();
   setupTableFilters();
+  setupFaqAccordion();
 });
