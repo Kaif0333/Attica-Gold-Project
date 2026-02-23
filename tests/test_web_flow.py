@@ -3,9 +3,15 @@ import uuid
 import re
 import os
 
+TEST_DB_PATH = "attica_gold_test.db"
 os.environ["EXPOSE_OTP_IN_RESPONSE"] = "1"
 os.environ["EXPOSE_RESET_TOKEN_IN_RESPONSE"] = "1"
 os.environ["SMTP_ENABLED"] = "0"
+os.environ["DATABASE_URL"] = f"sqlite:///./{TEST_DB_PATH}"
+os.environ["AUTO_RUN_MIGRATIONS"] = "1"
+
+if os.path.exists(TEST_DB_PATH):
+    os.remove(TEST_DB_PATH)
 
 from fastapi.testclient import TestClient
 
