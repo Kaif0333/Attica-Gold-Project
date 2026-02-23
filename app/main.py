@@ -640,6 +640,77 @@ def update_user_role(
     return RedirectResponse("/admin", status_code=303)
 
 
+@app.post("/admin/smtp-check")
+def smtp_check(
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    actor_role = request.session.get("role")
+    ip = client_ip(request)
+
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if actor_role != "admin":
+        log_event(
+            db,
+            "SMTP_CHECK_DENIED",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=ip,
+            details="Non-admin tried SMTP check.",
+        )
+        set_flash(request, "Admin access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+
+    if not validate_csrf_token(request, csrf_token):
+        log_event(
+            db,
+            "SMTP_CHECK_DENIED",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=ip,
+            details="Invalid CSRF token.",
+        )
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    if not settings.smtp_enabled:
+        set_flash(request, "SMTP is disabled. Set SMTP_ENABLED=1 in .env.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    try:
+        send_otp_email(
+            to_email=actor_email,
+            otp_code="123456",
+            purpose="smtp connectivity test",
+        )
+        log_event(
+            db,
+            "SMTP_CHECK_SUCCESS",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=ip,
+            details="SMTP test email sent to admin.",
+        )
+        set_flash(request, f"SMTP test email sent to {actor_email}.", "success")
+    except Exception as exc:
+        logger.exception("SMTP test failed: %s", exc)
+        log_event(
+            db,
+            "SMTP_CHECK_FAILED",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=ip,
+            details=str(exc),
+        )
+        set_flash(request, "SMTP test failed. Check SMTP credentials and host.", "error")
+
+    return RedirectResponse("/admin", status_code=303)
+
+
 @app.get("/forgot-password", response_class=HTMLResponse)
 def forgot_password_page(request: Request):
     if request.session.get("user_id"):

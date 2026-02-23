@@ -329,6 +329,32 @@ class WebFlowTests(unittest.TestCase):
         finally:
             db.close()
 
+    def test_admin_smtp_check_when_disabled(self) -> None:
+        strong_password = "Pass#1234"
+        admin_email = f"admin_smtp_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            admin_user = User(email=admin_email, password=hash_password(strong_password), role="admin")
+            db.add(admin_user)
+            db.commit()
+        finally:
+            db.close()
+
+        login_status = self._login_with_otp(admin_email, strong_password)
+        self.assertEqual(login_status, 303)
+
+        smtp_check = self.client.post(
+            "/admin/smtp-check",
+            data={"csrf_token": self._csrf_token_from_page("/admin")},
+            follow_redirects=False,
+        )
+        self.assertEqual(smtp_check.status_code, 303)
+        self.assertEqual(smtp_check.headers.get("location"), "/admin")
+
+        admin_page = self.client.get("/admin")
+        self.assertIn("SMTP is disabled", admin_page.text)
+
 
 if __name__ == "__main__":
     unittest.main()
