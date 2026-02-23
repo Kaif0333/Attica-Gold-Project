@@ -761,13 +761,16 @@ def staff_dashboard(request: Request, db: Session = Depends(get_db)):
         set_flash(request, "Staff access required.", "error")
         return RedirectResponse("/dashboard", status_code=303)
 
-    appointments = db.query(Appointment).order_by(Appointment.created_at.desc()).all()
+    all_appointments = db.query(Appointment).order_by(Appointment.created_at.desc()).all()
+    active_appointments = [appt for appt in all_appointments if appt.status != "completed"]
+    completed_appointments = [appt for appt in all_appointments if appt.status == "completed"]
     appointment_events = _events_by_appointment(db, limit=1000)
     return templates.TemplateResponse(
         request,
         "staff.html",
         {
-            "appointments": appointments,
+            "appointments": active_appointments,
+            "completed_appointments": completed_appointments,
             "appointment_events": appointment_events,
             "csrf_token": get_or_create_csrf_token(request),
             "flash": pop_flash(request),
