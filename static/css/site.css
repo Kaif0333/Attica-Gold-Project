@@ -359,11 +359,11 @@ body {
     gap: 12px;
 }
 
-.campaign-highlight {
+.story-highlight {
     margin-top: 16px;
 }
 
-.campaign-card {
+.story-card {
     background:
         radial-gradient(circle at 95% 10%, rgba(255, 219, 150, 0.26), transparent 36%),
         linear-gradient(145deg, #fff6e8 0%, #ffffff 45%, #fff1d7 100%);
@@ -376,7 +376,7 @@ body {
     box-shadow: 0 14px 28px rgba(68, 44, 9, 0.12);
 }
 
-.campaign-head h3 {
+.story-head h3 {
     margin: 0 0 8px;
     font-size: clamp(1.35rem, 2.6vw, 1.85rem);
     font-family: "Playfair Display", Georgia, serif;
@@ -389,7 +389,7 @@ body {
     line-height: 1.5;
 }
 
-.campaign-media {
+.story-media {
     border: 1px solid #edd8b5;
     border-radius: 14px;
     padding: 14px;
@@ -397,13 +397,13 @@ body {
     align-self: center;
 }
 
-.campaign-media p {
+.story-media p {
     margin: 8px 0 0;
     color: #59554d;
     line-height: 1.5;
 }
 
-.campaign-badge {
+.story-badge {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -550,7 +550,7 @@ body {
     color: var(--muted);
 }
 
-.campaign-kpis {
+.story-kpis {
     margin-top: 16px;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -575,18 +575,18 @@ body {
     line-height: 1.5;
 }
 
-.campaign-layout {
+.story-layout {
     margin-top: 18px;
     display: grid;
     grid-template-columns: 1.1fr 0.9fr;
     gap: 14px;
 }
 
-.campaign-block {
+.story-block {
     height: 100%;
 }
 
-.campaign-list {
+.story-list {
     margin: 10px 0 0;
     padding-left: 20px;
     display: grid;
@@ -1040,7 +1040,7 @@ input:focus {
         grid-template-columns: 1fr;
     }
 
-    .campaign-card {
+    .story-card {
         grid-template-columns: 1fr;
     }
 
@@ -1048,11 +1048,11 @@ input:focus {
         grid-template-columns: 1fr;
     }
 
-    .campaign-kpis {
+    .story-kpis {
         grid-template-columns: 1fr;
     }
 
-    .campaign-layout {
+    .story-layout {
         grid-template-columns: 1fr;
     }
 

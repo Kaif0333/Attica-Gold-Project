@@ -297,16 +297,11 @@ def about_page(request: Request):
 def brand_story_page(request: Request):
     return templates.TemplateResponse(
         request,
-        "campaign.html",
+        "brand_story.html",
         {
             "flash": pop_flash(request),
         },
     )
-
-
-@app.get("/campaign")
-def legacy_campaign_redirect():
-    return RedirectResponse("/brand-story", status_code=307)
 
 
 @app.get("/login", response_class=HTMLResponse)
