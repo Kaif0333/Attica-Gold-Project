@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.login_guard import clear_attempts_for_tests
 from app.main import app
-from app.models import Appointment, User
+from app.models import Appointment, AppointmentEvent, User
 from app.security import hash_password
 from app.settings import get_settings
 
@@ -508,6 +508,7 @@ class WebFlowTests(unittest.TestCase):
             self.assertIsNotNone(updated)
             self.assertEqual(updated.date, "2026-03-12")
             self.assertEqual(updated.time, "14:30")
+            self.assertEqual(updated.status, "rescheduled")
         finally:
             db.close()
 
@@ -521,8 +522,103 @@ class WebFlowTests(unittest.TestCase):
 
         db = SessionLocal()
         try:
-            deleted = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-            self.assertIsNone(deleted)
+            cancelled = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+            self.assertIsNotNone(cancelled)
+            self.assertEqual(cancelled.status, "cancelled")
+
+            events = db.query(AppointmentEvent).filter(AppointmentEvent.appointment_id == appointment_id).all()
+            actions = {event.action for event in events}
+            self.assertIn("rescheduled", actions)
+            self.assertIn("note_added", actions)
+            self.assertIn("cancelled", actions)
+        finally:
+            db.close()
+
+    def test_admin_can_export_appointments_csv(self) -> None:
+        strong_password = "Pass#1234"
+        admin_email = f"admin_export_{uuid.uuid4().hex[:8]}@example.com"
+        client_email = f"client_export_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            admin_user = User(email=admin_email, password=hash_password(strong_password), role="admin")
+            client_user = User(email=client_email, password=hash_password(strong_password), role="client")
+            db.add(admin_user)
+            db.add(client_user)
+            db.commit()
+            db.refresh(client_user)
+
+            appointment = Appointment(
+                user_id=client_user.id,
+                user_email=client_email,
+                date="2026-04-01",
+                time="10:00",
+                status="scheduled",
+            )
+            db.add(appointment)
+            db.commit()
+        finally:
+            db.close()
+
+        unauthorized = self.client.get("/admin/reports/appointments.csv", follow_redirects=False)
+        self.assertEqual(unauthorized.status_code, 303)
+        self.assertEqual(unauthorized.headers.get("location"), "/login")
+
+        login_status = self._login_with_otp(admin_email, strong_password)
+        self.assertEqual(login_status, 303)
+        exported = self.client.get("/admin/reports/appointments.csv")
+        self.assertEqual(exported.status_code, 200)
+        self.assertEqual(exported.headers.get("content-type"), "text/csv; charset=utf-8")
+        self.assertIn("attachment; filename=\"appointments_report.csv\"", exported.headers.get("content-disposition", ""))
+        self.assertIn("status", exported.text)
+        self.assertIn(client_email, exported.text)
+
+    def test_staff_can_complete_appointment(self) -> None:
+        strong_password = "Pass#1234"
+        staff_email = f"staff_complete_{uuid.uuid4().hex[:8]}@example.com"
+        client_email = f"client_complete_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            staff_user = User(email=staff_email, password=hash_password(strong_password), role="staff")
+            client_user = User(email=client_email, password=hash_password(strong_password), role="client")
+            db.add(staff_user)
+            db.add(client_user)
+            db.commit()
+            db.refresh(client_user)
+
+            appointment = Appointment(
+                user_id=client_user.id,
+                user_email=client_email,
+                date="2026-04-02",
+                time="15:15",
+                status="scheduled",
+            )
+            db.add(appointment)
+            db.commit()
+            db.refresh(appointment)
+            appointment_id = appointment.id
+        finally:
+            db.close()
+
+        login_status = self._login_with_otp(staff_email, strong_password)
+        self.assertEqual(login_status, 303)
+        complete = self.client.post(
+            f"/staff/appointments/{appointment_id}/complete",
+            data={"csrf_token": self._csrf_token_from_page("/staff")},
+            follow_redirects=False,
+        )
+        self.assertEqual(complete.status_code, 303)
+        self.assertEqual(complete.headers.get("location"), "/staff")
+
+        db = SessionLocal()
+        try:
+            done = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+            self.assertIsNotNone(done)
+            self.assertEqual(done.status, "completed")
+            events = db.query(AppointmentEvent).filter(AppointmentEvent.appointment_id == appointment_id).all()
+            actions = {event.action for event in events}
+            self.assertIn("completed", actions)
         finally:
             db.close()
 

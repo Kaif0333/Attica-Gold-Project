@@ -21,9 +21,24 @@ class Appointment(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, index=True, nullable=True)
     user_email = Column(String, index=True, nullable=False)
+    status = Column(String, nullable=False, default="scheduled")
     date = Column(String, nullable=False)
     time = Column(String, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class AppointmentEvent(Base):
+    __tablename__ = "appointment_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    appointment_id = Column(Integer, index=True, nullable=False)
+    action = Column(String, index=True, nullable=False)
+    actor_id = Column(Integer, index=True, nullable=True)
+    actor_email = Column(String, index=True, nullable=True)
+    actor_role = Column(String, nullable=True)
+    note = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
 class AuditLog(Base):

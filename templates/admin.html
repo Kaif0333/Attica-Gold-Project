@@ -24,6 +24,7 @@
             <button class="btn btn-primary glow-btn" type="submit">Send SMTP Test Email</button>
         </form>
         <a class="btn" href="/admin/bootstrap-status">View Admin Bootstrap Status</a>
+        <a class="btn" href="/admin/reports/appointments.csv">Export Appointments CSV</a>
         </div>
     </article>
 </section>
@@ -75,19 +76,40 @@
         <table class="table" id="admin-appointments-table">
             <thead>
                 <tr>
+                    <th>ID</th>
                     <th>Date</th>
                     <th>Time</th>
                     <th>User ID</th>
                     <th>Email</th>
+                    <th>Status</th>
+                    <th>Timeline</th>
                 </tr>
             </thead>
             <tbody>
                 {% for appt in appointments %}
                 <tr>
+                    <td>{{ appt.id }}</td>
                     <td>{{ appt.date }}</td>
                     <td>{{ appt.time }}</td>
                     <td>{{ appt.user_id }}</td>
                     <td>{{ appt.user_email }}</td>
+                    <td>{{ appt.status or "scheduled" }}</td>
+                    <td>
+                        {% set events = appointment_events.get(appt.id, []) %}
+                        {% if events %}
+                        <div class="timeline-list">
+                            {% for event in events[:4] %}
+                            <div class="timeline-item">
+                                <strong>{{ event.action }}</strong>
+                                <span>{{ event.actor_role or "-" }} / {{ event.actor_email or "-" }}</span>
+                                <small>{{ event.note or "-" }}</small>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <span class="muted">No history</span>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>

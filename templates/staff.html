@@ -25,9 +25,12 @@
                     <th>Date</th>
                     <th>Time</th>
                     <th>User Email</th>
+                    <th>Status</th>
                     <th>Reschedule</th>
                     <th>Support Note</th>
+                    <th>Complete</th>
                     <th>Cancel</th>
+                    <th>Timeline</th>
                 </tr>
             </thead>
             <tbody>
@@ -37,6 +40,7 @@
                     <td>{{ appt.date }}</td>
                     <td>{{ appt.time }}</td>
                     <td>{{ appt.user_email }}</td>
+                    <td>{{ appt.status or "scheduled" }}</td>
                     <td>
                         <form method="post" action="/staff/appointments/{{ appt.id }}/reschedule" class="form-grid">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -53,10 +57,32 @@
                         </form>
                     </td>
                     <td>
+                        <form method="post" action="/staff/appointments/{{ appt.id }}/complete">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="btn btn-primary" type="submit">Complete</button>
+                        </form>
+                    </td>
+                    <td>
                         <form method="post" action="/staff/appointments/{{ appt.id }}/cancel">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <button class="btn" type="submit">Cancel</button>
                         </form>
+                    </td>
+                    <td>
+                        {% set events = appointment_events.get(appt.id, []) %}
+                        {% if events %}
+                        <div class="timeline-list">
+                            {% for event in events[:4] %}
+                            <div class="timeline-item">
+                                <strong>{{ event.action }}</strong>
+                                <span>{{ event.actor_role or "-" }} / {{ event.actor_email or "-" }}</span>
+                                <small>{{ event.note or "-" }}</small>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <span class="muted">No history</span>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}

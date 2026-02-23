@@ -767,6 +767,37 @@ input:focus {
     background: #fff9ef;
 }
 
+.timeline-list {
+    display: grid;
+    gap: 6px;
+}
+
+.timeline-item {
+    border: 1px solid #ead8b6;
+    border-radius: 10px;
+    padding: 8px;
+    background: #fffbf4;
+    display: grid;
+    gap: 2px;
+}
+
+.timeline-item strong {
+    color: #5f4312;
+    text-transform: capitalize;
+    font-size: 0.82rem;
+}
+
+.timeline-item span {
+    color: #6b7280;
+    font-size: 0.76rem;
+}
+
+.timeline-item small {
+    color: #374151;
+    font-size: 0.76rem;
+    line-height: 1.35;
+}
+
 .table th {
     color: #374151;
     font-weight: 700;

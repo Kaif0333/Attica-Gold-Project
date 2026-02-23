@@ -1,7 +1,9 @@
+import csv
 from datetime import datetime, timedelta, timezone
+from io import StringIO
 
 from fastapi import Depends, FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -15,7 +17,7 @@ from app.database import engine, get_db
 from app.emailer import send_otp_email
 from app.login_guard import is_allowed, register_failure, register_success
 from app.migrations import run_migrations
-from app.models import Appointment, AuditLog, User
+from app.models import Appointment, AppointmentEvent, AuditLog, User
 from app.observability import configure_logging, request_logging_middleware
 from app.routers import api_v1, auth, health
 from app.security import (
@@ -130,6 +132,40 @@ def client_ip(request: Request) -> str:
 
 def has_staff_access(request: Request) -> bool:
     return request.session.get("role") in {"staff", "admin"}
+
+
+def record_appointment_event(
+    db: Session,
+    appointment_id: int,
+    action: str,
+    actor_id: int | None,
+    actor_email: str | None,
+    actor_role: str | None,
+    note: str | None = None,
+) -> None:
+    event = AppointmentEvent(
+        appointment_id=appointment_id,
+        action=action,
+        actor_id=actor_id,
+        actor_email=actor_email,
+        actor_role=actor_role,
+        note=note,
+    )
+    db.add(event)
+    db.commit()
+
+
+def _events_by_appointment(db: Session, limit: int = 500) -> dict[int, list[AppointmentEvent]]:
+    events = (
+        db.query(AppointmentEvent)
+        .order_by(AppointmentEvent.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    grouped: dict[int, list[AppointmentEvent]] = {}
+    for event in events:
+        grouped.setdefault(event.appointment_id, []).append(event)
+    return grouped
 
 
 def _set_pending_otp(request: Request, action: str, payload: dict) -> str | None:
@@ -696,11 +732,13 @@ def staff_dashboard(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/dashboard", status_code=303)
 
     appointments = db.query(Appointment).order_by(Appointment.created_at.desc()).all()
+    appointment_events = _events_by_appointment(db, limit=1000)
     return templates.TemplateResponse(
         request,
         "staff.html",
         {
             "appointments": appointments,
+            "appointment_events": appointment_events,
             "csrf_token": get_or_create_csrf_token(request),
             "flash": pop_flash(request),
         },
@@ -742,6 +780,8 @@ def staff_reschedule_appointment(
     old_slot = f"{appointment.date} {appointment.time}"
     appointment.date = date
     appointment.time = time
+    appointment.status = "rescheduled"
+    appointment.updated_at = datetime.now(timezone.utc)
     db.commit()
     log_event(
         db,
@@ -750,6 +790,15 @@ def staff_reschedule_appointment(
         user_email=actor_email,
         ip_address=client_ip(request),
         details=f"Appointment {appointment_id} moved from {old_slot} to {date} {time}.",
+    )
+    record_appointment_event(
+        db,
+        appointment_id=appointment.id,
+        action="rescheduled",
+        actor_id=actor_id,
+        actor_email=actor_email,
+        actor_role=request.session.get("role"),
+        note=f"Moved from {old_slot} to {date} {time}.",
     )
     set_flash(request, "Appointment rescheduled.", "success")
     return RedirectResponse("/staff", status_code=303)
@@ -777,9 +826,13 @@ def staff_cancel_appointment(
     if not appointment:
         set_flash(request, "Appointment not found.", "error")
         return RedirectResponse("/staff", status_code=303)
+    if appointment.status == "completed":
+        set_flash(request, "Completed appointments cannot be cancelled.", "error")
+        return RedirectResponse("/staff", status_code=303)
 
     details = f"Cancelled appointment {appointment_id} for {appointment.user_email} on {appointment.date} {appointment.time}."
-    db.delete(appointment)
+    appointment.status = "cancelled"
+    appointment.updated_at = datetime.now(timezone.utc)
     db.commit()
     log_event(
         db,
@@ -789,7 +842,66 @@ def staff_cancel_appointment(
         ip_address=client_ip(request),
         details=details,
     )
+    record_appointment_event(
+        db,
+        appointment_id=appointment.id,
+        action="cancelled",
+        actor_id=actor_id,
+        actor_email=actor_email,
+        actor_role=request.session.get("role"),
+        note=details,
+    )
     set_flash(request, "Appointment cancelled.", "success")
+    return RedirectResponse("/staff", status_code=303)
+
+
+@app.post("/staff/appointments/{appointment_id}/complete")
+def staff_complete_appointment(
+    request: Request,
+    appointment_id: int,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if not has_staff_access(request):
+        set_flash(request, "Staff access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appointment:
+        set_flash(request, "Appointment not found.", "error")
+        return RedirectResponse("/staff", status_code=303)
+    if appointment.status == "cancelled":
+        set_flash(request, "Cancelled appointments cannot be completed.", "error")
+        return RedirectResponse("/staff", status_code=303)
+
+    appointment.status = "completed"
+    appointment.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    log_event(
+        db,
+        "STAFF_APPOINTMENT_COMPLETED",
+        user_id=actor_id,
+        user_email=actor_email,
+        ip_address=client_ip(request),
+        details=f"Completed appointment {appointment_id} for {appointment.user_email}.",
+    )
+    record_appointment_event(
+        db,
+        appointment_id=appointment.id,
+        action="completed",
+        actor_id=actor_id,
+        actor_email=actor_email,
+        actor_role=request.session.get("role"),
+        note=f"Marked as completed for {appointment.user_email}.",
+    )
+    set_flash(request, "Appointment marked as completed.", "success")
     return RedirectResponse("/staff", status_code=303)
 
 
@@ -833,6 +945,15 @@ def staff_add_appointment_note(
         ip_address=client_ip(request),
         details=f"Appointment {appointment_id} note: {clean_note}",
     )
+    record_appointment_event(
+        db,
+        appointment_id=appointment.id,
+        action="note_added",
+        actor_id=actor_id,
+        actor_email=actor_email,
+        actor_role=request.session.get("role"),
+        note=clean_note,
+    )
     set_flash(request, "Support note added.", "success")
     return RedirectResponse("/staff", status_code=303)
 
@@ -855,6 +976,7 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
 
     users = db.query(User).order_by(User.id.desc()).all()
     appointments = db.query(Appointment).order_by(Appointment.created_at.desc()).all()
+    appointment_events = _events_by_appointment(db, limit=1000)
     audit_logs = db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(100).all()
     return templates.TemplateResponse(
         request,
@@ -862,10 +984,54 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
         {
             "users": users,
             "appointments": appointments,
+            "appointment_events": appointment_events,
             "audit_logs": audit_logs,
             "csrf_token": get_or_create_csrf_token(request),
             "flash": pop_flash(request),
         },
+    )
+
+
+@app.get("/admin/reports/appointments.csv")
+def admin_export_appointments_csv(request: Request, db: Session = Depends(get_db)):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if request.session.get("role") != "admin":
+        set_flash(request, "Admin access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+
+    appointments = db.query(Appointment).order_by(Appointment.created_at.desc()).all()
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["id", "user_id", "user_email", "status", "date", "time", "created_at", "updated_at"])
+    for appt in appointments:
+        writer.writerow(
+            [
+                appt.id,
+                appt.user_id,
+                appt.user_email,
+                getattr(appt, "status", "scheduled"),
+                appt.date,
+                appt.time,
+                appt.created_at.isoformat() if appt.created_at else "",
+                appt.updated_at.isoformat() if getattr(appt, "updated_at", None) else "",
+            ]
+        )
+
+    log_event(
+        db,
+        "ADMIN_APPOINTMENTS_EXPORT",
+        user_id=actor_id,
+        user_email=actor_email,
+        ip_address=client_ip(request),
+        details=f"Exported {len(appointments)} appointments to CSV.",
+    )
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="appointments_report.csv"'},
     )
 
 
@@ -1247,11 +1413,14 @@ def book_appointment(
     appointment = Appointment(
         user_id=user_id,
         user_email=user_email,
+        status="scheduled",
         date=date,
         time=time,
+        updated_at=datetime.now(timezone.utc),
     )
     db.add(appointment)
     db.commit()
+    db.refresh(appointment)
     log_event(
         db,
         "APPOINTMENT_BOOKED",
@@ -1259,6 +1428,15 @@ def book_appointment(
         user_email=user_email,
         ip_address=client_ip(request),
         details=f"{date} {time}",
+    )
+    record_appointment_event(
+        db,
+        appointment_id=appointment.id,
+        action="scheduled",
+        actor_id=user_id,
+        actor_email=user_email,
+        actor_role=request.session.get("role"),
+        note=f"Booked for {date} {time}.",
     )
     set_flash(request, "Appointment booked successfully.", "success")
     return RedirectResponse("/dashboard", status_code=303)
