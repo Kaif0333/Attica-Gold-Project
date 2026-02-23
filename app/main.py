@@ -293,8 +293,8 @@ def about_page(request: Request):
     )
 
 
-@app.get("/campaign", response_class=HTMLResponse)
-def campaign_page(request: Request):
+@app.get("/brand-story", response_class=HTMLResponse)
+def brand_story_page(request: Request):
     return templates.TemplateResponse(
         request,
         "campaign.html",
@@ -302,6 +302,11 @@ def campaign_page(request: Request):
             "flash": pop_flash(request),
         },
     )
+
+
+@app.get("/campaign")
+def legacy_campaign_redirect():
+    return RedirectResponse("/brand-story", status_code=307)
 
 
 @app.get("/login", response_class=HTMLResponse)
