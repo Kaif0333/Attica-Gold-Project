@@ -37,6 +37,8 @@ class Settings:
     password_min_length: int
     reset_token_ttl_minutes: int
     expose_reset_token_in_response: bool
+    otp_ttl_seconds: int
+    expose_otp_in_response: bool
     admin_email: str
     admin_password: str
 
@@ -71,6 +73,11 @@ def get_settings() -> Settings:
         reset_token_ttl_minutes=_as_int(os.getenv("RESET_TOKEN_TTL_MINUTES"), default=30),
         expose_reset_token_in_response=_as_bool(
             os.getenv("EXPOSE_RESET_TOKEN_IN_RESPONSE"),
+            default=environment != "production",
+        ),
+        otp_ttl_seconds=_as_int(os.getenv("OTP_TTL_SECONDS"), default=300),
+        expose_otp_in_response=_as_bool(
+            os.getenv("EXPOSE_OTP_IN_RESPONSE"),
             default=environment != "production",
         ),
         admin_email=os.getenv("ATTICA_ADMIN_EMAIL", ""),

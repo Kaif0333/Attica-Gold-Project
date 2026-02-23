@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}OTP Verification | Attica Gold{% endblock %}
+{% block content %}
+<section class="auth-shell">
+    <div class="auth-card">
+        <p class="tag">Attica Gold Security</p>
+        <h1>Verify OTP</h1>
+        <p>
+            {% if message %}
+            {{ message }}
+            {% else %}
+            Enter the one-time password sent for {{ action }}.
+            {% endif %}
+        </p>
+
+        {% if target_email %}
+        <p class="muted">For account: {{ target_email }}</p>
+        {% endif %}
+
+        {% if error %}
+        <div class="alert alert-error">{{ error }}</div>
+        {% endif %}
+
+        {% if otp_preview %}
+        <div class="alert alert-info">Dev OTP: <code>{{ otp_preview }}</code></div>
+        {% endif %}
+
+        <form method="post" action="/verify-otp" class="form-grid">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="otp_code">OTP Code</label>
+            <input id="otp_code" type="text" name="otp_code" maxlength="6" placeholder="Enter 6-digit OTP" required>
+            <button class="btn btn-primary" type="submit">Verify OTP</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

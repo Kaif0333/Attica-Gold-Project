@@ -54,3 +54,12 @@ def generate_reset_token() -> str:
 
 def hash_reset_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def generate_otp_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def verify_hashed_token(raw_token: str, token_hash: str) -> bool:
+    candidate = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(candidate, token_hash)

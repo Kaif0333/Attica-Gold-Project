@@ -18,10 +18,12 @@ from app.models import Appointment, AuditLog, User
 from app.observability import configure_logging, request_logging_middleware
 from app.routers import api_v1, auth, health
 from app.security import (
+    generate_otp_code,
     generate_reset_token,
     hash_password,
     hash_reset_token,
     validate_password_policy,
+    verify_hashed_token,
     verify_password,
 )
 from app.settings import get_settings
@@ -94,6 +96,27 @@ def client_ip(request: Request) -> str:
     return "unknown"
 
 
+def _set_pending_otp(request: Request, action: str, payload: dict) -> str | None:
+    otp_code = generate_otp_code()
+    request.session["pending_otp"] = {
+        "action": action,
+        "payload": payload,
+        "otp_hash": hash_reset_token(otp_code),
+        "expires_ts": int(datetime.now(timezone.utc).timestamp()) + settings.otp_ttl_seconds,
+    }
+    if settings.expose_otp_in_response:
+        return otp_code
+    return None
+
+
+def _get_pending_otp(request: Request):
+    return request.session.get("pending_otp")
+
+
+def _clear_pending_otp(request: Request) -> None:
+    request.session.pop("pending_otp", None)
+
+
 if settings.auto_run_migrations:
     run_migrations()
 ensure_admin_user()
@@ -151,6 +174,121 @@ def login_page(request: Request):
     )
 
 
+@app.get("/verify-otp", response_class=HTMLResponse)
+def verify_otp_page(request: Request):
+    pending = _get_pending_otp(request)
+    if not pending:
+        set_flash(request, "No OTP challenge in progress.", "error")
+        return RedirectResponse("/login", status_code=303)
+
+    return templates.TemplateResponse(
+        request,
+        "verify_otp.html",
+        {
+            "csrf_token": get_or_create_csrf_token(request),
+            "target_email": pending.get("payload", {}).get("email", ""),
+            "action": pending.get("action", "login"),
+        },
+    )
+
+
+@app.post("/verify-otp")
+def verify_otp(
+    request: Request,
+    otp_code: str = Form(...),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    pending = _get_pending_otp(request)
+    if not pending:
+        set_flash(request, "No OTP challenge in progress.", "error")
+        return RedirectResponse("/login", status_code=303)
+
+    if not validate_csrf_token(request, csrf_token):
+        return templates.TemplateResponse(
+            request,
+            "verify_otp.html",
+            {
+                "error": "Invalid security token. Please refresh and try again.",
+                "csrf_token": get_or_create_csrf_token(request),
+                "target_email": pending.get("payload", {}).get("email", ""),
+                "action": pending.get("action", "login"),
+            },
+            status_code=403,
+        )
+
+    expires_ts = pending.get("expires_ts", 0)
+    if int(datetime.now(timezone.utc).timestamp()) > int(expires_ts):
+        _clear_pending_otp(request)
+        set_flash(request, "OTP expired. Please try again.", "error")
+        return RedirectResponse("/login", status_code=303)
+
+    if not verify_hashed_token(otp_code, pending.get("otp_hash", "")):
+        return templates.TemplateResponse(
+            request,
+            "verify_otp.html",
+            {
+                "error": "Invalid OTP code.",
+                "csrf_token": get_or_create_csrf_token(request),
+                "target_email": pending.get("payload", {}).get("email", ""),
+                "action": pending.get("action", "login"),
+            },
+            status_code=400,
+        )
+
+    action = pending.get("action")
+    payload = pending.get("payload", {})
+    ip = client_ip(request)
+
+    if action == "register":
+        email = payload.get("email")
+        password_hash = payload.get("password_hash")
+        if not email or not password_hash:
+            _clear_pending_otp(request)
+            set_flash(request, "Invalid OTP payload. Please register again.", "error")
+            return RedirectResponse("/register", status_code=303)
+
+        existing_user = db.query(User).filter(User.email == email).first()
+        if existing_user:
+            _clear_pending_otp(request)
+            set_flash(request, "Email already registered.", "error")
+            return RedirectResponse("/login", status_code=303)
+
+        new_user = User(email=email, password=password_hash, role="client")
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        log_event(db, "USER_REGISTERED", user_id=new_user.id, user_email=new_user.email, ip_address=ip)
+
+        request.session["user_id"] = new_user.id
+        request.session["user"] = new_user.email
+        request.session["role"] = new_user.role
+        _clear_pending_otp(request)
+        set_flash(request, "Registration completed with OTP verification.", "success")
+        return RedirectResponse("/dashboard", status_code=303)
+
+    if action == "login":
+        user_id = payload.get("user_id")
+        email = payload.get("email")
+        role = payload.get("role", "client")
+        if not user_id or not email:
+            _clear_pending_otp(request)
+            set_flash(request, "Invalid OTP payload. Please login again.", "error")
+            return RedirectResponse("/login", status_code=303)
+
+        request.session["user_id"] = user_id
+        request.session["user"] = email
+        request.session["role"] = role
+        _clear_pending_otp(request)
+        log_event(db, "LOGIN_SUCCESS", user_id=user_id, user_email=email, ip_address=ip)
+        set_flash(request, "Welcome back. OTP verification complete.", "success")
+        return RedirectResponse("/dashboard", status_code=303)
+
+    _clear_pending_otp(request)
+    set_flash(request, "Unknown OTP action.", "error")
+    return RedirectResponse("/login", status_code=303)
+
+
 @app.post("/login")
 def login(
     request: Request,
@@ -204,12 +342,23 @@ def login(
         )
 
     register_success(email=email, client_ip=ip)
-    request.session["user_id"] = user.id
-    request.session["user"] = user.email
-    request.session["role"] = user.role or "client"
-    log_event(db, "LOGIN_SUCCESS", user_id=user.id, user_email=user.email, ip_address=ip)
-    set_flash(request, "Welcome back.", "success")
-    return RedirectResponse("/dashboard", status_code=303)
+    otp_preview = _set_pending_otp(
+        request,
+        action="login",
+        payload={"user_id": user.id, "email": user.email, "role": user.role or "client"},
+    )
+    log_event(db, "LOGIN_OTP_ISSUED", user_id=user.id, user_email=user.email, ip_address=ip)
+    return templates.TemplateResponse(
+        request,
+        "verify_otp.html",
+        {
+            "message": "Enter the OTP to complete login.",
+            "csrf_token": get_or_create_csrf_token(request),
+            "target_email": user.email,
+            "action": "login",
+            "otp_preview": otp_preview,
+        },
+    )
 
 
 @app.get("/register", response_class=HTMLResponse)
@@ -260,17 +409,24 @@ def register(
             status_code=400,
         )
 
-    new_user = User(email=email, password=hash_password(password), role="client")
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    log_event(db, "USER_REGISTERED", user_id=new_user.id, user_email=new_user.email, ip_address=client_ip(request))
-
-    request.session["user_id"] = new_user.id
-    request.session["user"] = new_user.email
-    request.session["role"] = new_user.role
-    set_flash(request, "Registration successful.", "success")
-    return RedirectResponse("/dashboard", status_code=303)
+    hashed_password = hash_password(password)
+    otp_preview = _set_pending_otp(
+        request,
+        action="register",
+        payload={"email": email, "password_hash": hashed_password},
+    )
+    log_event(db, "REGISTER_OTP_ISSUED", user_email=email, ip_address=client_ip(request))
+    return templates.TemplateResponse(
+        request,
+        "verify_otp.html",
+        {
+            "message": "Enter the OTP to complete registration.",
+            "csrf_token": get_or_create_csrf_token(request),
+            "target_email": email,
+            "action": "register",
+            "otp_preview": otp_preview,
+        },
+    )
 
 
 @app.get("/dashboard", response_class=HTMLResponse)

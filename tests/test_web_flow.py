@@ -27,22 +27,58 @@ class WebFlowTests(unittest.TestCase):
         self.assertIsNotNone(match)
         return match.group(1)
 
+    def _otp_from_response(self, response_text: str) -> str:
+        match = re.search(r"Dev OTP: <code>([^<]+)</code>", response_text)
+        self.assertIsNotNone(match)
+        return match.group(1)
+
+    def _register_with_otp(self, email: str, password: str) -> None:
+        register = self.client.post(
+            "/register",
+            data={
+                "email": email,
+                "password": password,
+                "csrf_token": self._csrf_token_from_page("/register"),
+            },
+        )
+        self.assertEqual(register.status_code, 200)
+        otp = self._otp_from_response(register.text)
+
+        verify = self.client.post(
+            "/verify-otp",
+            data={"otp_code": otp, "csrf_token": self._csrf_token_from_page("/verify-otp")},
+            follow_redirects=False,
+        )
+        self.assertEqual(verify.status_code, 303)
+
+    def _login_with_otp(self, email: str, password: str) -> int:
+        login = self.client.post(
+            "/login",
+            data={
+                "email": email,
+                "password": password,
+                "csrf_token": self._csrf_token_from_page("/login"),
+            },
+            follow_redirects=False,
+        )
+        if login.status_code != 200:
+            return login.status_code
+
+        otp = self._otp_from_response(login.text)
+        verify = self.client.post(
+            "/verify-otp",
+            data={"otp_code": otp, "csrf_token": self._csrf_token_from_page("/verify-otp")},
+            follow_redirects=False,
+        )
+        return verify.status_code
+
     def test_register_login_book_and_user_isolation(self) -> None:
         strong_password = "Pass#1234"
         email1 = f"user1_{uuid.uuid4().hex[:8]}@example.com"
         email2 = f"user2_{uuid.uuid4().hex[:8]}@example.com"
 
         # Register and book an appointment as user 1.
-        register_1 = self.client.post(
-            "/register",
-            data={
-                "email": email1,
-                "password": strong_password,
-                "csrf_token": self._csrf_token_from_page("/register"),
-            },
-            follow_redirects=False,
-        )
-        self.assertEqual(register_1.status_code, 303)
+        self._register_with_otp(email1, strong_password)
 
         book_1 = self.client.post(
             "/book-appointment",
@@ -58,16 +94,7 @@ class WebFlowTests(unittest.TestCase):
         self.client.get("/logout", follow_redirects=False)
 
         # Register and book as user 2.
-        register_2 = self.client.post(
-            "/register",
-            data={
-                "email": email2,
-                "password": strong_password,
-                "csrf_token": self._csrf_token_from_page("/register"),
-            },
-            follow_redirects=False,
-        )
-        self.assertEqual(register_2.status_code, 303)
+        self._register_with_otp(email2, strong_password)
 
         book_2 = self.client.post(
             "/book-appointment",
@@ -90,15 +117,7 @@ class WebFlowTests(unittest.TestCase):
     def test_invalid_booking_shows_error_flash(self) -> None:
         strong_password = "Pass#1234"
         email = f"user_{uuid.uuid4().hex[:8]}@example.com"
-        self.client.post(
-            "/register",
-            data={
-                "email": email,
-                "password": strong_password,
-                "csrf_token": self._csrf_token_from_page("/register"),
-            },
-            follow_redirects=False,
-        )
+        self._register_with_otp(email, strong_password)
 
         bad_book = self.client.post(
             "/book-appointment",
@@ -132,16 +151,8 @@ class WebFlowTests(unittest.TestCase):
         self.assertEqual(anonymous_admin.headers.get("location"), "/login")
 
         # Admin login should grant access.
-        login = self.client.post(
-            "/login",
-            data={
-                "email": email,
-                "password": strong_password,
-                "csrf_token": self._csrf_token_from_page("/login"),
-            },
-            follow_redirects=False,
-        )
-        self.assertEqual(login.status_code, 303)
+        login_status = self._login_with_otp(email, strong_password)
+        self.assertEqual(login_status, 303)
 
         admin_page = self.client.get("/admin")
         self.assertEqual(admin_page.status_code, 200)
@@ -219,16 +230,7 @@ class WebFlowTests(unittest.TestCase):
         new_password = "New#5678Pass"
         email = f"reset_{uuid.uuid4().hex[:8]}@example.com"
 
-        register = self.client.post(
-            "/register",
-            data={
-                "email": email,
-                "password": original_password,
-                "csrf_token": self._csrf_token_from_page("/register"),
-            },
-            follow_redirects=False,
-        )
-        self.assertEqual(register.status_code, 303)
+        self._register_with_otp(email, original_password)
         self.client.get("/logout", follow_redirects=False)
 
         forgot = self.client.post(
@@ -252,27 +254,11 @@ class WebFlowTests(unittest.TestCase):
         self.assertEqual(reset.status_code, 303)
         self.assertEqual(reset.headers.get("location"), "/login")
 
-        old_login = self.client.post(
-            "/login",
-            data={
-                "email": email,
-                "password": original_password,
-                "csrf_token": self._csrf_token_from_page("/login"),
-            },
-            follow_redirects=False,
-        )
-        self.assertEqual(old_login.status_code, 401)
+        old_login_status = self._login_with_otp(email, original_password)
+        self.assertEqual(old_login_status, 401)
 
-        new_login = self.client.post(
-            "/login",
-            data={
-                "email": email,
-                "password": new_password,
-                "csrf_token": self._csrf_token_from_page("/login"),
-            },
-            follow_redirects=False,
-        )
-        self.assertEqual(new_login.status_code, 303)
+        new_login_status = self._login_with_otp(email, new_password)
+        self.assertEqual(new_login_status, 303)
 
     def test_admin_can_update_user_role(self) -> None:
         strong_password = "Pass#1234"
@@ -291,16 +277,8 @@ class WebFlowTests(unittest.TestCase):
         finally:
             db.close()
 
-        login = self.client.post(
-            "/login",
-            data={
-                "email": admin_email,
-                "password": strong_password,
-                "csrf_token": self._csrf_token_from_page("/login"),
-            },
-            follow_redirects=False,
-        )
-        self.assertEqual(login.status_code, 303)
+        login_status = self._login_with_otp(admin_email, strong_password)
+        self.assertEqual(login_status, 303)
 
         update = self.client.post(
             f"/admin/users/{target_id}/role",
@@ -332,16 +310,8 @@ class WebFlowTests(unittest.TestCase):
         finally:
             db.close()
 
-        login = self.client.post(
-            "/login",
-            data={
-                "email": admin_email,
-                "password": strong_password,
-                "csrf_token": self._csrf_token_from_page("/login"),
-            },
-            follow_redirects=False,
-        )
-        self.assertEqual(login.status_code, 303)
+        login_status = self._login_with_otp(admin_email, strong_password)
+        self.assertEqual(login_status, 303)
 
         demote = self.client.post(
             f"/admin/users/{admin_id}/role",
