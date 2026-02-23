@@ -529,14 +529,10 @@ class WebFlowTests(unittest.TestCase):
         db = SessionLocal()
         try:
             cancelled = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-            self.assertIsNotNone(cancelled)
-            self.assertEqual(cancelled.status, "cancelled")
+            self.assertIsNone(cancelled)
 
             events = db.query(AppointmentEvent).filter(AppointmentEvent.appointment_id == appointment_id).all()
-            actions = {event.action for event in events}
-            self.assertIn("rescheduled", actions)
-            self.assertIn("note_added", actions)
-            self.assertIn("cancelled", actions)
+            self.assertEqual(events, [])
         finally:
             db.close()
 

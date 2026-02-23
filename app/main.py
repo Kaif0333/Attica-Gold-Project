@@ -168,6 +168,22 @@ def _events_by_appointment(db: Session, limit: int = 500) -> dict[int, list[Appo
     return grouped
 
 
+def _normalize_recent_audit_logs(logs: list[AuditLog], limit: int = 100) -> list[AuditLog]:
+    dedupe_types = {"STAFF_APPOINTMENT_CANCELLED", "STAFF_APPOINTMENT_RESCHEDULED"}
+    normalized: list[AuditLog] = []
+    seen: set[tuple[str, str | None, str | None]] = set()
+    for log in logs:
+        if log.event_type in dedupe_types:
+            key = (log.event_type, log.user_email, log.details)
+            if key in seen:
+                continue
+            seen.add(key)
+        normalized.append(log)
+        if len(normalized) >= limit:
+            break
+    return normalized
+
+
 def _set_pending_otp(request: Request, action: str, payload: dict) -> str | None:
     now_ts = int(datetime.now(timezone.utc).timestamp())
     otp_code = generate_otp_code()
@@ -831,9 +847,6 @@ def staff_cancel_appointment(
         return RedirectResponse("/staff", status_code=303)
 
     details = f"Cancelled appointment {appointment_id} for {appointment.user_email} on {appointment.date} {appointment.time}."
-    appointment.status = "cancelled"
-    appointment.updated_at = datetime.now(timezone.utc)
-    db.commit()
     log_event(
         db,
         "STAFF_APPOINTMENT_CANCELLED",
@@ -842,15 +855,9 @@ def staff_cancel_appointment(
         ip_address=client_ip(request),
         details=details,
     )
-    record_appointment_event(
-        db,
-        appointment_id=appointment.id,
-        action="cancelled",
-        actor_id=actor_id,
-        actor_email=actor_email,
-        actor_role=request.session.get("role"),
-        note=details,
-    )
+    db.query(AppointmentEvent).filter(AppointmentEvent.appointment_id == appointment.id).delete()
+    db.delete(appointment)
+    db.commit()
     set_flash(request, "Appointment cancelled.", "success")
     return RedirectResponse("/staff", status_code=303)
 
@@ -977,7 +984,8 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     users = db.query(User).order_by(User.id.desc()).all()
     appointments = db.query(Appointment).order_by(Appointment.created_at.desc()).all()
     appointment_events = _events_by_appointment(db, limit=1000)
-    audit_logs = db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(100).all()
+    raw_audit_logs = db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(400).all()
+    audit_logs = _normalize_recent_audit_logs(raw_audit_logs, limit=100)
     return templates.TemplateResponse(
         request,
         "admin.html",
