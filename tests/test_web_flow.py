@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.login_guard import clear_attempts_for_tests
 from app.main import app
-from app.models import Appointment, AppointmentEvent, User
+from app.models import Appointment, AppointmentEvent, Inquiry, User
 from app.security import hash_password
 from app.settings import get_settings
 
@@ -408,6 +408,51 @@ class WebFlowTests(unittest.TestCase):
         self.assertIn("bootstrap_email", payload)
         self.assertIn("admin_user_exists", payload)
         self.assertIn("admin_user_role", payload)
+
+    def test_contact_inquiry_submission_visible_to_admin(self) -> None:
+        strong_password = "Pass#1234"
+        admin_email = f"admin_inquiry_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            admin_user = User(email=admin_email, password=hash_password(strong_password), role="admin")
+            db.add(admin_user)
+            db.commit()
+        finally:
+            db.close()
+
+        submit = self.client.post(
+            "/contact/inquiry",
+            data={
+                "name": "Kaif Basha",
+                "email": f"lead_{uuid.uuid4().hex[:6]}@example.com",
+                "phone": "9999999999",
+                "city": "Bangalore",
+                "service": "Sell Gold",
+                "message": "Need a quote for old gold.",
+                "csrf_token": self._csrf_token_from_page("/contact"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(submit.status_code, 303)
+        self.assertEqual(submit.headers.get("location"), "/contact")
+
+        db = SessionLocal()
+        try:
+            inquiry = db.query(Inquiry).order_by(Inquiry.id.desc()).first()
+            self.assertIsNotNone(inquiry)
+            self.assertEqual(inquiry.city, "Bangalore")
+            self.assertEqual(inquiry.service, "Sell Gold")
+            self.assertEqual(inquiry.status, "new")
+        finally:
+            db.close()
+
+        login_status = self._login_with_otp(admin_email, strong_password)
+        self.assertEqual(login_status, 303)
+        admin_page = self.client.get("/admin")
+        self.assertEqual(admin_page.status_code, 200)
+        self.assertIn("Contact Inquiries", admin_page.text)
+        self.assertIn("Kaif Basha", admin_page.text)
 
     def test_dashboard_personalization_for_admin_role(self) -> None:
         strong_password = "Pass#1234"

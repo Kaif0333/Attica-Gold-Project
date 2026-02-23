@@ -50,6 +50,35 @@
 
 <section class="panel-grid reveal">
     <article class="panel wide premium-panel">
+        <h3>Send Inquiry</h3>
+        <p class="muted">Share your details and requirement. Attica team will reach out quickly.</p>
+        <form method="post" action="/contact/inquiry" class="form-grid">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="inq_name">Full Name</label>
+            <input id="inq_name" name="name" type="text" placeholder="Enter your name" required>
+
+            <label for="inq_email">Email</label>
+            <input id="inq_email" name="email" type="email" placeholder="Enter your email" required>
+
+            <label for="inq_phone">Phone</label>
+            <input id="inq_phone" name="phone" type="text" placeholder="Enter your phone number">
+
+            <label for="inq_city">City</label>
+            <input id="inq_city" name="city" type="text" placeholder="Enter your city">
+
+            <label for="inq_service">Service</label>
+            <input id="inq_service" name="service" type="text" placeholder="Sell Gold / Release Pledged Gold / General">
+
+            <label for="inq_message">Message</label>
+            <input id="inq_message" name="message" type="text" placeholder="Write your requirement" required>
+
+            <button class="btn btn-primary glow-btn" type="submit">Submit Inquiry</button>
+        </form>
+    </article>
+</section>
+
+<section class="panel-grid reveal">
+    <article class="panel wide premium-panel">
         <h3>Need Faster Service?</h3>
         <p class="muted">Create your account and pre-book your slot so branch teams can prepare in advance.</p>
         <div class="hero-actions">

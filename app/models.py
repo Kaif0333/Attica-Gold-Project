@@ -51,3 +51,17 @@ class AuditLog(Base):
     ip_address = Column(String, nullable=True)
     details = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class Inquiry(Base):
+    __tablename__ = "inquiries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    email = Column(String, index=True, nullable=False)
+    phone = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    service = Column(String, nullable=True)
+    message = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="new")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)

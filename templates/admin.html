@@ -10,6 +10,7 @@
     <div class="header-badges">
         <span class="header-chip">Users: {{ users|length }}</span>
         <span class="header-chip">Appointments: {{ appointments|length }}</span>
+        <span class="header-chip">Inquiries: {{ inquiries|length }}</span>
         <span class="header-chip">Logs: {{ audit_logs|length }}</span>
     </div>
 </section>
@@ -131,6 +132,43 @@
         </table>
         {% else %}
         <p class="muted">No appointments found.</p>
+        {% endif %}
+    </article>
+
+    <article class="panel wide premium-panel">
+        <h3>Contact Inquiries</h3>
+        <input type="text" placeholder="Search inquiries by name, email, city, or service" data-filter-target="#inquiries-table">
+        {% if inquiries %}
+        <table class="table" id="inquiries-table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>City</th>
+                    <th>Service</th>
+                    <th>Message</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for inquiry in inquiries %}
+                <tr>
+                    <td>{{ inquiry.created_at }}</td>
+                    <td>{{ inquiry.name }}</td>
+                    <td>{{ inquiry.email }}</td>
+                    <td>{{ inquiry.phone or "-" }}</td>
+                    <td>{{ inquiry.city or "-" }}</td>
+                    <td>{{ inquiry.service or "-" }}</td>
+                    <td>{{ inquiry.message }}</td>
+                    <td>{{ inquiry.status }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="muted">No contact inquiries yet.</p>
         {% endif %}
     </article>
 

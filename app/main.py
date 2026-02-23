@@ -17,7 +17,7 @@ from app.database import engine, get_db
 from app.emailer import send_otp_email
 from app.login_guard import is_allowed, register_failure, register_success
 from app.migrations import run_migrations
-from app.models import Appointment, AppointmentEvent, AuditLog, User
+from app.models import Appointment, AppointmentEvent, AuditLog, Inquiry, User
 from app.observability import configure_logging, request_logging_middleware
 from app.routers import api_v1, auth, health
 from app.security import (
@@ -322,8 +322,63 @@ def contact_page(request: Request):
         "contact.html",
         {
             "flash": pop_flash(request),
+            "csrf_token": get_or_create_csrf_token(request),
         },
     )
+
+
+@app.post("/contact/inquiry")
+def submit_contact_inquiry(
+    request: Request,
+    name: str = Form(...),
+    email: str = Form(...),
+    phone: str = Form(""),
+    city: str = Form(""),
+    service: str = Form(""),
+    message: str = Form(...),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/contact", status_code=303)
+
+    clean_name = name.strip()
+    clean_email = email.strip().lower()
+    clean_phone = phone.strip()
+    clean_city = city.strip()
+    clean_service = service.strip()
+    clean_message = message.strip()
+
+    if not clean_name or not clean_email or not clean_message:
+        set_flash(request, "Name, email, and message are required.", "error")
+        return RedirectResponse("/contact", status_code=303)
+    if "@" not in clean_email or "." not in clean_email:
+        set_flash(request, "Please enter a valid email address.", "error")
+        return RedirectResponse("/contact", status_code=303)
+
+    inquiry = Inquiry(
+        name=clean_name,
+        email=clean_email,
+        phone=clean_phone or None,
+        city=clean_city or None,
+        service=clean_service or None,
+        message=clean_message,
+        status="new",
+    )
+    db.add(inquiry)
+    db.commit()
+
+    log_event(
+        db,
+        "CONTACT_INQUIRY_CREATED",
+        user_id=request.session.get("user_id"),
+        user_email=request.session.get("user") or clean_email,
+        ip_address=client_ip(request),
+        details=f"Inquiry from {clean_name} ({clean_email}) for service: {clean_service or 'general'}.",
+    )
+    set_flash(request, "Inquiry submitted. Our team will contact you shortly.", "success")
+    return RedirectResponse("/contact", status_code=303)
 
 
 @app.get("/brand-story", response_class=HTMLResponse)
@@ -1146,6 +1201,7 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
 
     users = db.query(User).order_by(User.id.desc()).all()
     appointments = db.query(Appointment).order_by(Appointment.created_at.desc()).all()
+    inquiries = db.query(Inquiry).order_by(Inquiry.created_at.desc()).limit(200).all()
     appointment_events = _events_by_appointment(db, limit=1000)
     raw_audit_logs = db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(400).all()
     audit_logs = _normalize_recent_audit_logs(raw_audit_logs, limit=100)
@@ -1155,6 +1211,7 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
         {
             "users": users,
             "appointments": appointments,
+            "inquiries": inquiries,
             "appointment_events": appointment_events,
             "audit_logs": audit_logs,
             "csrf_token": get_or_create_csrf_token(request),
