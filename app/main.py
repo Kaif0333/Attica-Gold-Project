@@ -186,6 +186,17 @@ def root(request: Request):
     )
 
 
+@app.get("/about", response_class=HTMLResponse)
+def about_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "about.html",
+        {
+            "flash": pop_flash(request),
+        },
+    )
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     if request.session.get("user_id"):
