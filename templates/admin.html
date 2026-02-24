@@ -24,6 +24,10 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button class="btn btn-primary glow-btn" type="submit">Send SMTP Test Email</button>
         </form>
+        <form method="post" action="/admin/inquiries/summary/send">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-primary" type="submit">Send Daily Inquiry Summary</button>
+        </form>
         <a class="btn" href="/admin/bootstrap-status">View Admin Bootstrap Status</a>
         <a class="btn" href="/admin/reports/appointments.csv">Export Appointments CSV</a>
         </div>
@@ -152,11 +156,14 @@
                     <th>Status</th>
                     <th>Assigned To</th>
                     <th>Admin Note</th>
+                    <th>Admin Alerts</th>
+                    <th>Assignee Alerts</th>
                     <th>Manage</th>
                 </tr>
             </thead>
             <tbody>
                 {% for inquiry in inquiries %}
+                {% set notify = inquiry_notification_summary.get(inquiry.id, {"created":"pending","assigned":"pending"}) %}
                 <tr>
                     <td>{{ inquiry.created_at }}</td>
                     <td>{{ inquiry.name }}</td>
@@ -168,6 +175,22 @@
                     <td>{{ inquiry.status }}</td>
                     <td>{{ inquiry.assigned_to_email or "-" }}</td>
                     <td>{{ inquiry.admin_note or "-" }}</td>
+                    <td>
+                        <span>{{ notify.created }}</span>
+                        <form method="post" action="/admin/inquiries/{{ inquiry.id }}/notify/retry-created" class="staff-inline-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="btn staff-btn" type="submit">Retry</button>
+                        </form>
+                    </td>
+                    <td>
+                        <span>{{ notify.assigned }}</span>
+                        {% if inquiry.assigned_to_email %}
+                        <form method="post" action="/admin/inquiries/{{ inquiry.id }}/notify/retry-assignment" class="staff-inline-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="btn staff-btn" type="submit">Retry</button>
+                        </form>
+                        {% endif %}
+                    </td>
                     <td>
                         <form method="post" action="/admin/inquiries/{{ inquiry.id }}/manage" class="form-grid">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

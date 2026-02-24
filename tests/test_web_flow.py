@@ -382,6 +382,64 @@ class WebFlowTests(unittest.TestCase):
         admin_page = self.client.get("/admin")
         self.assertIn("SMTP is disabled", admin_page.text)
 
+    def test_admin_inquiry_notification_actions_when_smtp_disabled(self) -> None:
+        strong_password = "Pass#1234"
+        admin_email = f"admin_notify_{uuid.uuid4().hex[:8]}@example.com"
+        lead_email = f"lead_notify_{uuid.uuid4().hex[:8]}@example.com"
+
+        db = SessionLocal()
+        try:
+            admin_user = User(email=admin_email, password=hash_password(strong_password), role="admin")
+            db.add(admin_user)
+            db.commit()
+        finally:
+            db.close()
+
+        create_inquiry = self.client.post(
+            "/contact/inquiry",
+            data={
+                "name": "Notify Lead",
+                "email": lead_email,
+                "phone": "9000000000",
+                "city": "Chennai",
+                "service": "Sell Gold",
+                "message": "Need callback.",
+                "csrf_token": self._csrf_token_from_page("/contact"),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create_inquiry.status_code, 303)
+
+        db = SessionLocal()
+        try:
+            inquiry = db.query(Inquiry).filter(Inquiry.email == lead_email).first()
+            self.assertIsNotNone(inquiry)
+            inquiry_id = inquiry.id
+        finally:
+            db.close()
+
+        login_status = self._login_with_otp(admin_email, strong_password)
+        self.assertEqual(login_status, 303)
+
+        retry_created = self.client.post(
+            f"/admin/inquiries/{inquiry_id}/notify/retry-created",
+            data={"csrf_token": self._csrf_token_from_page("/admin")},
+            follow_redirects=False,
+        )
+        self.assertEqual(retry_created.status_code, 303)
+        self.assertEqual(retry_created.headers.get("location"), "/admin")
+
+        summary = self.client.post(
+            "/admin/inquiries/summary/send",
+            data={"csrf_token": self._csrf_token_from_page("/admin")},
+            follow_redirects=False,
+        )
+        self.assertEqual(summary.status_code, 303)
+        self.assertEqual(summary.headers.get("location"), "/admin")
+
+        admin_page = self.client.get("/admin")
+        self.assertIn("SMTP is disabled", admin_page.text)
+
     def test_admin_bootstrap_status_endpoint(self) -> None:
         strong_password = "Pass#1234"
         admin_email = f"admin_bootstrap_{uuid.uuid4().hex[:8]}@example.com"

@@ -115,3 +115,29 @@ def send_inquiry_assignment_email(
         "Please review and update status from the staff/admin console.",
     ]
     _send_email(to_email, subject, lines)
+
+
+def send_daily_inquiry_summary_email(
+    to_email: str,
+    *,
+    summary_date: str,
+    total_count: int,
+    new_count: int,
+    contacted_count: int,
+    resolved_count: int,
+    spam_count: int,
+) -> None:
+    subject = f"Attica Daily Inquiry Summary - {summary_date}"
+    lines = [
+        "Daily inquiry summary:",
+        "",
+        f"Date: {summary_date}",
+        f"Total inquiries: {total_count}",
+        f"New: {new_count}",
+        f"Contacted: {contacted_count}",
+        f"Resolved: {resolved_count}",
+        f"Spam: {spam_count}",
+        "",
+        "Review detailed inquiry rows in the admin console.",
+    ]
+    _send_email(to_email, subject, lines)

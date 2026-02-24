@@ -1,4 +1,5 @@
 import csv
+import re
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 
@@ -14,7 +15,12 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.csrf import get_or_create_csrf_token, validate_csrf_token
 from app.audit import log_event
 from app.database import engine, get_db
-from app.emailer import send_inquiry_assignment_email, send_inquiry_created_email, send_otp_email
+from app.emailer import (
+    send_daily_inquiry_summary_email,
+    send_inquiry_assignment_email,
+    send_inquiry_created_email,
+    send_otp_email,
+)
 from app.login_guard import is_allowed, register_failure, register_success
 from app.migrations import run_migrations
 from app.models import Appointment, AppointmentEvent, AuditLog, Inquiry, User
@@ -35,6 +41,12 @@ settings = get_settings()
 logger = configure_logging()
 ALLOWED_ROLES = {"client", "staff", "admin"}
 ALLOWED_INQUIRY_STATUSES = {"new", "contacted", "resolved", "spam"}
+INQUIRY_NOTIFY_EVENT_TYPES = {
+    "CONTACT_INQUIRY_NOTIFY_SENT",
+    "CONTACT_INQUIRY_NOTIFY_FAILED",
+    "INQUIRY_ASSIGN_NOTIFY_SENT",
+    "INQUIRY_ASSIGN_NOTIFY_FAILED",
+}
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
     "script-src 'self'; "
@@ -249,6 +261,33 @@ def _inquiry_alert_recipients() -> list[str]:
     return deduped
 
 
+def _extract_inquiry_id(details: str | None) -> int | None:
+    if not details:
+        return None
+    match = re.search(r"inquiry_id=(\d+)", details)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _inquiry_notification_summary(logs: list[AuditLog]) -> dict[int, dict[str, str]]:
+    summary: dict[int, dict[str, str]] = {}
+    for log in logs:
+        inquiry_id = _extract_inquiry_id(log.details)
+        if not inquiry_id:
+            continue
+        state = summary.setdefault(inquiry_id, {"created": "pending", "assigned": "pending"})
+        if log.event_type == "CONTACT_INQUIRY_NOTIFY_SENT" and state["created"] == "pending":
+            state["created"] = "sent"
+        elif log.event_type == "CONTACT_INQUIRY_NOTIFY_FAILED" and state["created"] == "pending":
+            state["created"] = "failed"
+        elif log.event_type == "INQUIRY_ASSIGN_NOTIFY_SENT" and state["assigned"] == "pending":
+            state["assigned"] = "sent"
+        elif log.event_type == "INQUIRY_ASSIGN_NOTIFY_FAILED" and state["assigned"] == "pending":
+            state["assigned"] = "failed"
+    return summary
+
+
 if settings.auto_run_migrations:
     run_migrations()
 validate_runtime_configuration()
@@ -413,6 +452,14 @@ def submit_contact_inquiry(
                     service=inquiry.service,
                     message=inquiry.message,
                 )
+                log_event(
+                    db,
+                    "CONTACT_INQUIRY_NOTIFY_SENT",
+                    user_id=request.session.get("user_id"),
+                    user_email=request.session.get("user") or clean_email,
+                    ip_address=client_ip(request),
+                    details=f"inquiry_id={inquiry.id};recipient={recipient}",
+                )
             except Exception as exc:
                 logger.exception("Failed to send inquiry-created email to %s: %s", recipient, exc)
                 log_event(
@@ -421,7 +468,7 @@ def submit_contact_inquiry(
                     user_id=request.session.get("user_id"),
                     user_email=request.session.get("user") or clean_email,
                     ip_address=client_ip(request),
-                    details=f"Notification failure to {recipient}: {exc}",
+                    details=f"inquiry_id={inquiry.id};recipient={recipient};error={exc}",
                 )
     set_flash(request, "Inquiry submitted. Our team will contact you shortly.", "success")
     return RedirectResponse("/contact", status_code=303)
@@ -1321,6 +1368,14 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     )
     appointments = db.query(Appointment).order_by(Appointment.created_at.desc()).all()
     inquiries = db.query(Inquiry).order_by(Inquiry.created_at.desc()).limit(200).all()
+    inquiry_notification_logs = (
+        db.query(AuditLog)
+        .filter(AuditLog.event_type.in_(INQUIRY_NOTIFY_EVENT_TYPES))
+        .order_by(AuditLog.created_at.desc())
+        .limit(1200)
+        .all()
+    )
+    inquiry_notification_summary = _inquiry_notification_summary(inquiry_notification_logs)
     appointment_events = _events_by_appointment(db, limit=1000)
     raw_audit_logs = db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(400).all()
     audit_logs = _normalize_recent_audit_logs(raw_audit_logs, limit=100)
@@ -1332,6 +1387,7 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "staff_users": staff_users,
             "appointments": appointments,
             "inquiries": inquiries,
+            "inquiry_notification_summary": inquiry_notification_summary,
             "appointment_events": appointment_events,
             "audit_logs": audit_logs,
             "csrf_token": get_or_create_csrf_token(request),
@@ -1415,6 +1471,14 @@ def admin_manage_inquiry(
                 service=inquiry.service,
                 note=inquiry.admin_note,
             )
+            log_event(
+                db,
+                "INQUIRY_ASSIGN_NOTIFY_SENT",
+                user_id=actor_id,
+                user_email=actor_email,
+                ip_address=client_ip(request),
+                details=f"inquiry_id={inquiry.id};recipient={inquiry.assigned_to_email}",
+            )
         except Exception as exc:
             logger.exception(
                 "Failed to send inquiry-assignment email to %s: %s",
@@ -1427,9 +1491,224 @@ def admin_manage_inquiry(
                 user_id=actor_id,
                 user_email=actor_email,
                 ip_address=client_ip(request),
-                details=f"Assignment notification failure to {inquiry.assigned_to_email}: {exc}",
+                details=f"inquiry_id={inquiry.id};recipient={inquiry.assigned_to_email};error={exc}",
             )
     set_flash(request, "Inquiry updated successfully.", "success")
+    return RedirectResponse("/admin", status_code=303)
+
+
+@app.post("/admin/inquiries/{inquiry_id}/notify/retry-created")
+def admin_retry_inquiry_created_notification(
+    request: Request,
+    inquiry_id: int,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if not has_admin_access(request):
+        set_flash(request, "Admin access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/admin", status_code=303)
+    if not settings.smtp_enabled:
+        set_flash(request, "SMTP is disabled. Enable SMTP to send notifications.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    inquiry = db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
+    if not inquiry:
+        set_flash(request, "Inquiry not found.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    recipients = _inquiry_alert_recipients()
+    if not recipients:
+        set_flash(request, "No inquiry alert recipients configured.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    sent_count = 0
+    for recipient in recipients:
+        try:
+            send_inquiry_created_email(
+                recipient,
+                inquiry_id=inquiry.id,
+                name=inquiry.name,
+                email=inquiry.email,
+                phone=inquiry.phone,
+                city=inquiry.city,
+                service=inquiry.service,
+                message=inquiry.message,
+            )
+            log_event(
+                db,
+                "CONTACT_INQUIRY_NOTIFY_SENT",
+                user_id=actor_id,
+                user_email=actor_email,
+                ip_address=client_ip(request),
+                details=f"inquiry_id={inquiry.id};recipient={recipient}",
+            )
+            sent_count += 1
+        except Exception as exc:
+            logger.exception("Retry inquiry-created email failed for %s: %s", recipient, exc)
+            log_event(
+                db,
+                "CONTACT_INQUIRY_NOTIFY_FAILED",
+                user_id=actor_id,
+                user_email=actor_email,
+                ip_address=client_ip(request),
+                details=f"inquiry_id={inquiry.id};recipient={recipient};error={exc}",
+            )
+
+    set_flash(request, f"Retried inquiry alerts. Sent to {sent_count}/{len(recipients)} recipients.", "info")
+    return RedirectResponse("/admin", status_code=303)
+
+
+@app.post("/admin/inquiries/{inquiry_id}/notify/retry-assignment")
+def admin_retry_inquiry_assignment_notification(
+    request: Request,
+    inquiry_id: int,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if not has_admin_access(request):
+        set_flash(request, "Admin access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/admin", status_code=303)
+    if not settings.smtp_enabled:
+        set_flash(request, "SMTP is disabled. Enable SMTP to send notifications.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    inquiry = db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
+    if not inquiry:
+        set_flash(request, "Inquiry not found.", "error")
+        return RedirectResponse("/admin", status_code=303)
+    if not inquiry.assigned_to_email:
+        set_flash(request, "Inquiry has no assignee yet.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    try:
+        send_inquiry_assignment_email(
+            inquiry.assigned_to_email,
+            inquiry_id=inquiry.id,
+            name=inquiry.name,
+            email=inquiry.email,
+            city=inquiry.city,
+            service=inquiry.service,
+            note=inquiry.admin_note,
+        )
+        log_event(
+            db,
+            "INQUIRY_ASSIGN_NOTIFY_SENT",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=client_ip(request),
+            details=f"inquiry_id={inquiry.id};recipient={inquiry.assigned_to_email}",
+        )
+        set_flash(request, "Assignment notification sent.", "success")
+    except Exception as exc:
+        logger.exception(
+            "Retry inquiry-assignment email failed for %s: %s",
+            inquiry.assigned_to_email,
+            exc,
+        )
+        log_event(
+            db,
+            "INQUIRY_ASSIGN_NOTIFY_FAILED",
+            user_id=actor_id,
+            user_email=actor_email,
+            ip_address=client_ip(request),
+            details=f"inquiry_id={inquiry.id};recipient={inquiry.assigned_to_email};error={exc}",
+        )
+        set_flash(request, "Assignment notification failed. Check SMTP and recipient.", "error")
+
+    return RedirectResponse("/admin", status_code=303)
+
+
+@app.post("/admin/inquiries/summary/send")
+def admin_send_inquiry_daily_summary(
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor_id = request.session.get("user_id")
+    actor_email = request.session.get("user")
+    if not actor_id:
+        return RedirectResponse("/login", status_code=303)
+    if not has_admin_access(request):
+        set_flash(request, "Admin access required.", "error")
+        return RedirectResponse("/dashboard", status_code=303)
+    if not validate_csrf_token(request, csrf_token):
+        set_flash(request, "Invalid security token. Please refresh and try again.", "error")
+        return RedirectResponse("/admin", status_code=303)
+    if not settings.smtp_enabled:
+        set_flash(request, "SMTP is disabled. Enable SMTP to send notifications.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    recipients = _inquiry_alert_recipients()
+    if not recipients:
+        set_flash(request, "No summary recipients configured.", "error")
+        return RedirectResponse("/admin", status_code=303)
+
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
+    inquiries_today = (
+        db.query(Inquiry)
+        .filter(Inquiry.created_at >= day_start)
+        .filter(Inquiry.created_at < day_end)
+        .all()
+    )
+    total_count = len(inquiries_today)
+    counts = {"new": 0, "contacted": 0, "resolved": 0, "spam": 0}
+    for inquiry in inquiries_today:
+        counts[inquiry.status] = counts.get(inquiry.status, 0) + 1
+
+    sent_count = 0
+    summary_date = day_start.date().isoformat()
+    for recipient in recipients:
+        try:
+            send_daily_inquiry_summary_email(
+                recipient,
+                summary_date=summary_date,
+                total_count=total_count,
+                new_count=counts.get("new", 0),
+                contacted_count=counts.get("contacted", 0),
+                resolved_count=counts.get("resolved", 0),
+                spam_count=counts.get("spam", 0),
+            )
+            log_event(
+                db,
+                "INQUIRY_DAILY_SUMMARY_SENT",
+                user_id=actor_id,
+                user_email=actor_email,
+                ip_address=client_ip(request),
+                details=f"summary_date={summary_date};recipient={recipient};total={total_count}",
+            )
+            sent_count += 1
+        except Exception as exc:
+            logger.exception("Daily inquiry summary send failed for %s: %s", recipient, exc)
+            log_event(
+                db,
+                "INQUIRY_DAILY_SUMMARY_FAILED",
+                user_id=actor_id,
+                user_email=actor_email,
+                ip_address=client_ip(request),
+                details=f"summary_date={summary_date};recipient={recipient};error={exc}",
+            )
+
+    set_flash(
+        request,
+        f"Daily inquiry summary sent to {sent_count}/{len(recipients)} recipients.",
+        "info",
+    )
     return RedirectResponse("/admin", status_code=303)
 
 
