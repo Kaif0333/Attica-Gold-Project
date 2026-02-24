@@ -1078,7 +1078,8 @@ input:focus {
 .floating-actions {
     position: fixed;
     right: 18px;
-    bottom: 18px;
+    top: 50%;
+    transform: translateY(-50%);
     z-index: 50;
     display: grid;
     gap: 10px;
@@ -1212,7 +1213,9 @@ input:focus {
 
     .floating-actions {
         right: 12px;
-        bottom: 12px;
+        top: auto;
+        bottom: 76px;
+        transform: none;
     }
 
     .floating-btn {
