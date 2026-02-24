@@ -30,6 +30,7 @@ body {
         radial-gradient(circle at 70% 98%, #f2f6ff 0%, transparent 23%),
         var(--paper);
     min-height: 100vh;
+    overflow-x: hidden;
 }
 
 .topbar {
@@ -1119,6 +1120,11 @@ input:focus {
 }
 
 @media (max-width: 900px) {
+    html,
+    body {
+        overflow-x: hidden;
+    }
+
     .panel {
         grid-column: span 12;
     }
@@ -1141,10 +1147,14 @@ input:focus {
 
     .topbar {
         padding: 12px 16px;
+        flex-wrap: wrap;
+        gap: 8px 12px;
     }
 
     .nav {
         gap: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
     }
 
     .brand-copy small {
