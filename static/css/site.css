@@ -1076,11 +1076,13 @@ input:focus {
 }
 
 .floating-actions {
-    position: fixed;
-    right: 18px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 50;
+    position: fixed !important;
+    right: 18px !important;
+    top: 50% !important;
+    bottom: auto !important;
+    left: auto !important;
+    transform: translateY(-50%) !important;
+    z-index: 9999 !important;
     display: grid;
     gap: 10px;
 }
@@ -1212,10 +1214,10 @@ input:focus {
     }
 
     .floating-actions {
-        right: 12px;
-        top: auto;
-        bottom: 76px;
-        transform: none;
+        right: 12px !important;
+        top: auto !important;
+        bottom: 76px !important;
+        transform: none !important;
     }
 
     .floating-btn {
