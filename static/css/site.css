@@ -1075,6 +1075,40 @@ input:focus {
     text-align: center;
 }
 
+.floating-actions {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 50;
+    display: grid;
+    gap: 10px;
+}
+
+.floating-btn {
+    min-width: 120px;
+    border-radius: 999px;
+    padding: 10px 14px;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+    text-align: center;
+    box-shadow: 0 10px 22px rgba(17, 24, 39, 0.25);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.floating-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 26px rgba(17, 24, 39, 0.3);
+}
+
+.floating-btn-call {
+    background: linear-gradient(120deg, #9a6b1d, #d6a84f);
+}
+
+.floating-btn-whatsapp {
+    background: linear-gradient(120deg, #178e48, #22c55e);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .ticker-track {
         animation: none;
@@ -1174,5 +1208,16 @@ input:focus {
     .staff-bulk-form {
         grid-template-columns: 1fr;
         align-items: stretch;
+    }
+
+    .floating-actions {
+        right: 12px;
+        bottom: 12px;
+    }
+
+    .floating-btn {
+        min-width: 106px;
+        padding: 9px 12px;
+        font-size: 0.88rem;
     }
 }
