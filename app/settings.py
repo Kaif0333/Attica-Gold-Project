@@ -29,13 +29,23 @@ def _as_bool(value: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _as_int(value: str, default: int) -> int:
+def _as_int(value: str, default: int, minimum: int | None = None) -> int:
     if value is None:
         return default
     try:
-        return int(value)
+        parsed = int(value)
     except ValueError:
         return default
+    if minimum is not None and parsed < minimum:
+        return default
+    return parsed
+
+
+def _as_same_site(value: str | None, default: str) -> str:
+    candidate = (value or default).strip().lower()
+    if candidate in {"lax", "strict", "none"}:
+        return candidate
+    return default
 
 
 @dataclass(frozen=True)
@@ -96,22 +106,33 @@ def get_settings() -> Settings:
             os.getenv("SESSION_HTTPS_ONLY"),
             default=session_https_default,
         ),
-        session_same_site=os.getenv("SESSION_SAMESITE", session_same_site_default).strip().lower(),
+        session_same_site=_as_same_site(
+            os.getenv("SESSION_SAMESITE"),
+            default=session_same_site_default,
+        ),
         docs_enabled=docs_enabled,
         redoc_enabled=redoc_enabled,
         auto_run_migrations=auto_run_migrations,
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         request_id_header=os.getenv("REQUEST_ID_HEADER", "X-Request-ID"),
-        login_max_attempts=_as_int(os.getenv("LOGIN_MAX_ATTEMPTS"), default=5),
-        login_window_seconds=_as_int(os.getenv("LOGIN_WINDOW_SECONDS"), default=900),
-        login_lockout_seconds=_as_int(os.getenv("LOGIN_LOCKOUT_SECONDS"), default=900),
-        password_min_length=_as_int(os.getenv("PASSWORD_MIN_LENGTH"), default=8),
-        reset_token_ttl_minutes=_as_int(os.getenv("RESET_TOKEN_TTL_MINUTES"), default=30),
+        login_max_attempts=_as_int(os.getenv("LOGIN_MAX_ATTEMPTS"), default=5, minimum=1),
+        login_window_seconds=_as_int(os.getenv("LOGIN_WINDOW_SECONDS"), default=900, minimum=1),
+        login_lockout_seconds=_as_int(
+            os.getenv("LOGIN_LOCKOUT_SECONDS"),
+            default=900,
+            minimum=1,
+        ),
+        password_min_length=_as_int(os.getenv("PASSWORD_MIN_LENGTH"), default=8, minimum=8),
+        reset_token_ttl_minutes=_as_int(
+            os.getenv("RESET_TOKEN_TTL_MINUTES"),
+            default=30,
+            minimum=1,
+        ),
         expose_reset_token_in_response=_as_bool(
             os.getenv("EXPOSE_RESET_TOKEN_IN_RESPONSE"),
             default=environment != "production",
         ),
-        otp_ttl_seconds=_as_int(os.getenv("OTP_TTL_SECONDS"), default=300),
+        otp_ttl_seconds=_as_int(os.getenv("OTP_TTL_SECONDS"), default=300, minimum=30),
         expose_otp_in_response=_as_bool(
             os.getenv("EXPOSE_OTP_IN_RESPONSE"),
             default=environment != "production",
@@ -119,11 +140,12 @@ def get_settings() -> Settings:
         otp_resend_cooldown_seconds=_as_int(
             os.getenv("OTP_RESEND_COOLDOWN_SECONDS"),
             default=45,
+            minimum=1,
         ),
-        otp_max_resends=_as_int(os.getenv("OTP_MAX_RESENDS"), default=3),
+        otp_max_resends=_as_int(os.getenv("OTP_MAX_RESENDS"), default=3, minimum=1),
         smtp_enabled=_as_bool(os.getenv("SMTP_ENABLED"), default=False),
         smtp_host=os.getenv("SMTP_HOST", ""),
-        smtp_port=_as_int(os.getenv("SMTP_PORT"), default=587),
+        smtp_port=_as_int(os.getenv("SMTP_PORT"), default=587, minimum=1),
         smtp_username=os.getenv("SMTP_USERNAME", ""),
         smtp_password=os.getenv("SMTP_PASSWORD", ""),
         smtp_use_tls=_as_bool(os.getenv("SMTP_USE_TLS"), default=True),

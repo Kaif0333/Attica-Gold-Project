@@ -121,6 +121,16 @@ def ensure_admin_user() -> None:
 
 
 def validate_runtime_configuration() -> None:
+    if settings.environment == "production":
+        if settings.secret_key == "attica-gold-secret-key":
+            raise RuntimeError(
+                "Production requires a non-default ATTICA_SECRET_KEY."
+            )
+        if not settings.session_https_only:
+            raise RuntimeError(
+                "Production requires SESSION_HTTPS_ONLY=1."
+            )
+
     if not settings.smtp_enabled:
         return
 
